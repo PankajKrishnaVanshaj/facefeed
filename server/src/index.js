@@ -8,7 +8,7 @@ import { app, server } from "./socket/index.js";
 
 dotenv.config();
 
-const PORT = process.env.PORT || 8800;
+const PORT = process.env.PORT;
 
 const corsOptions = {
   origin: [process.env.CREATOR_HOST, process.env.CLIENT_HOST],
