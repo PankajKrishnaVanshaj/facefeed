@@ -11,7 +11,7 @@ function Header() {
         <div className="flex items-center">
           <Link to={"/"}>
             <img
-              src="/facepin.png"
+              src="/facefeed.png"
               alt="logo"
               width={55}
               height={55}

@@ -12,7 +12,7 @@ const AuthForm = () => {
         <div className="flex justify-center mb-4 sm:mb-6 md:mb-8">
           <Link to={"/"}>
             <img
-              src="/facepin.png"
+              src="/facefeed.png"
               alt="Logo"
               className="w-12 sm:w-16 md:w-20 lg:w-24 h-auto duration-300 hover:scale-90 invert"
             />
