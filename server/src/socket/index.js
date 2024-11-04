@@ -8,7 +8,7 @@ const app = express();
 const server = http.createServer(app);
 const io = new SocketIO(server, {
   cors: {
-    origin: ["http://localhost:5173"], // Adjust according to your client URL
+    origin: [`${process.env.CLIENT_HOST}`],
     methods: ["GET", "POST"],
     credentials: true,
   },

@@ -9,7 +9,6 @@ const MeInfo = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [user, setUser] = useState(null);
   const menuRef = useRef(null);
-  console.log(user);
 
   const toggleMenu = () => {
     setIsOpen((prev) => !prev);
