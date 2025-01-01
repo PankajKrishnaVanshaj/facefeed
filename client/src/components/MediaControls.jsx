@@ -21,8 +21,15 @@ const MediaControls = ({
   function leave() {
     location.href = "/"; // Redirect to the root page
   }
+
   return (
     <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 z-10 flex items-center gap-1 p-1">
+      <span
+        onClick={leave}
+        className="flex items-center justify-center w-10 h-10 bg-red-500 rounded-full cursor-pointer hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-600 transition ease-in-out duration-150"
+      >
+        <FiPhoneForwarded className="w-6 h-6 text-white" />
+      </span>
       <span
         onClick={toggleCamera}
         className="flex items-center justify-center w-10 h-10 bg-gray-200 rounded-full cursor-pointer hover:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-400 transition ease-in-out duration-150"
@@ -61,18 +68,12 @@ const MediaControls = ({
       >
         <GiPlayerNext className="w-6 h-6 text-white" />
       </span>
-      <span
+      {/* <span
         onClick={refreshPage}
         className="flex items-center justify-center w-10 h-10 bg-red-500 rounded-full cursor-pointer hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-600 transition ease-in-out duration-150"
       >
         <MdOutlineRefresh className="w-6 h-6 text-white" />
-      </span>
-      <span
-        onClick={leave}
-        className="flex items-center justify-center w-10 h-10 bg-red-500 rounded-full cursor-pointer hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-600 transition ease-in-out duration-150"
-      >
-        <FiPhoneForwarded className="w-6 h-6 text-white" />
-      </span>
+      </span> */}
     </div>
   );
 };
