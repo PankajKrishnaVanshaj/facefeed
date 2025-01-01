@@ -1,4 +1,3 @@
-// Import the RoomManager class
 import { RoomManager } from "./Room.Manager.js";
 
 // Class representing a user
@@ -8,74 +7,94 @@ class User {
   }
 }
 
-// Class responsible for managing users
 export class UserManager {
   constructor() {
     this.users = [];
     this.queue = [];
     this.roomManager = new RoomManager();
+    this.userTimeouts = {}; // Track timeouts for each socket
   }
 
-  // Method to add a user to the user manager
-  addUser(socket) {
-    if (!socket || !socket.id) {
+  // Add a user to the user manager with a promise
+  async addUser(socket) {
+    if (!socket?.id) {
       console.error("Invalid socket");
       return;
     }
 
-    // Add the user to the users array
+    //  Check if the user is already in any room before adding
+    // const existingRoomId = await this.roomManager.doesRoomExistBySocket(socket);
+    // if (existingRoomId) {
+    //   // If user is already in a room, skip room creation
+    //   console.log(`User ${socket.id} is already in room ${existingRoomId}.`);
+    //   return;
+    // }
+
     const newUser = new User(socket);
     this.users.push(newUser);
-
-    // Add the user's socket ID to the queue
     this.queue.push(socket.id);
 
-    // Check if there are enough users in the queue to create a room
-    this.checkQueueForRoom();
+    await this.checkQueueForRoom(socket);
   }
 
-  // Method to remove a user from the user manager
-  removeUser(socketId) {
+  // Remove a user from the user manager with a promise
+  async removeUser(socketId) {
     if (!socketId) {
       console.error("Invalid socket ID");
       return;
     }
 
-    // Find the user with the specified socket ID
-    const userIndex = this.users.findIndex(
-      (user) => user.socket.id === socketId
-    );
-
-    // Remove the user from the users array
-    if (userIndex !== -1) {
-      this.users.splice(userIndex, 1);
-    }
-
-    // Remove the socket ID from the queue
+    // Remove user from users array and queue
+    this.users = this.users.filter((user) => user.socket.id !== socketId);
     this.queue = this.queue.filter((id) => id !== socketId);
+
+    // Clear timeout for this user if it exists
+    if (this.userTimeouts[socketId]) {
+      clearTimeout(this.userTimeouts[socketId]);
+      delete this.userTimeouts[socketId];
+    }
   }
 
-  // Method to check if there are enough users in the queue to create a room
-  checkQueueForRoom() {
-    while (this.queue.length >= 2) {
-      // Remove two users from the queue
-      const id1 = this.queue.shift();
-      const id2 = this.queue.shift();
-
-      // Find the users with the specified socket IDs
-      const user1 = this.users.find((user) => user.socket.id === id1);
-      const user2 = this.users.find((user) => user.socket.id === id2);
-
-      // If both users exist, create a room between them
-      if (user1 && user2) {
-        this.roomManager.createRoom(user1, user2);
-      } else {
-        console.error("Users not found for room creation");
-
-        // If any user is missing, return them to the queue
-        if (id1) this.queue.push(id1);
-        if (id2) this.queue.push(id2);
-      }
+  // Check if there are enough users in the queue to create a room with a promise
+  async checkQueueForRoom(socket) {
+    if (this.queue.length < 2) {
+      await this.waitForSecondUser(socket);
+      return;
     }
+
+    const [id1, id2] = [this.queue.shift(), this.queue.shift()];
+    const user1 = this.getUserById(id1);
+    const user2 = this.getUserById(id2);
+
+    if (user1 && user2) {
+      await this.roomManager.createRoom(user1, user2);
+    } else {
+      await this.requeueUsers(id1, id2);
+    }
+  }
+
+  // Get user by socket ID
+  getUserById(socketId) {
+    return this.users.find((user) => user.socket.id === socketId);
+  }
+
+  // Re-add users to the queue if they weren't found
+  async requeueUsers(id1, id2) {
+    if (id1) this.queue.push(id1);
+    if (id2) this.queue.push(id2);
+    console.error("Users not found for room creation");
+  }
+
+  // Wait for a second user without timeout (just a placeholder, can be customized if needed)
+  async waitForSecondUser(socket) {
+    // Just wait for another user to join without timing out
+    return new Promise((resolve) => {
+      const intervalId = setInterval(() => {
+        if (this.queue.length >= 2) {
+          clearInterval(intervalId);
+          resolve(); // Proceed when the queue has 2 or more users
+        }
+      }, 1000); // Check every second if the queue has enough users
+    });
   }
 }

@@ -16,14 +16,13 @@ const io = new SocketIO(server, {
 
 app.use(express.static("public"));
 
-// Handle socket connections
+const rooms = {}; // In-memory room storage
+
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
-
-  // Add user to user manager
   userManager.addUser(socket);
 
-  // Handle joining a room
+  // Handle room events
   socket.on("join-room", ({ room }) => {
     if (!room) {
       console.error("No room specified");
@@ -31,61 +30,52 @@ io.on("connection", (socket) => {
     }
     socket.join(room);
     socket.to(room).emit("ready");
-  });
-
-  // In-memory room storage (example)
-  const rooms = {}; // Store room information (users, etc.)
-
-  // When a user joins a room
-  socket.on("join-room", (room) => {
-    socket.join(room);
-    if (!rooms[room]) {
-      rooms[room] = [];
-    }
+    rooms[room] = rooms[room] || [];
     rooms[room].push(socket.id);
   });
 
-  // Handle leave-room
   socket.on("leave-room", ({ room }) => {
     socket.leave(room);
-
-    // Remove the user from the room
+    // Check if the room exists and remove the socket ID from the room's list
     if (rooms[room]) {
       rooms[room] = rooms[room].filter((id) => id !== socket.id);
     }
+    socket
+      .to(room)
+      .emit("message", { userId: socket.id, text: "User left the chat room" });
+  });
 
-    // Notify others in the room
-    socket.to(room).emit("message", {
-      userId: socket.id,
-      text: "User left the chat room",
-    });
+  // If the room has 1 or fewer users after the user leaves, delete it
+  socket.on("delete-room", ({ room }) => {
+    if (rooms[room] ) {
+      delete rooms[room];
+      io.to(room).emit("room-deleted", {
+        message: "Room deleted due to insufficient users",
+      });
+      console.log(`Room ${room} has been deleted.`);
+    } else {
+      console.log(
+        rooms[room]
+          ? `Room ${room} is still active with ${rooms[room].length} users.`
+          : `Room ${room} does not exist.`
+      );
+    }
 
+    userManager.removeUser(socket.id);
     userManager.addUser(socket);
   });
 
-  // Handle delete-room
-  socket.on("delete-room", ({ room }) => {
-    // Check if the room is empty
-    if (rooms[room] && rooms[room].length === 0) {
-      delete rooms[room]; // Delete the room
-
-      // Optionally, notify users if needed
-      io.to(room).emit("room-deleted", { message: "Room has been deleted" });
-    }
-  });
-
-  // Handle receiving chat messages and broadcasting them to the room
+  // Handle chat messages
   socket.on("chat", (message) => {
-    const rooms = Array.from(socket.rooms).filter((room) => room !== socket.id); // Get the rooms the user is in
-    rooms.forEach((room) => {
-      io.to(room).emit("message", {
-        userId: socket.id,
-        text: message,
-      });
-    });
+    const roomsList = Array.from(socket.rooms).filter(
+      (room) => room !== socket.id
+    );
+    roomsList.forEach((room) =>
+      io.to(room).emit("message", { userId: socket.id, text: message })
+    );
   });
 
-  // Handle offer/answer exchange
+  // Handle WebRTC signaling events
   socket.on("offer", ({ offer, room }) => {
     socket.to(room).emit("offer", offer);
   });
@@ -94,7 +84,6 @@ io.on("connection", (socket) => {
     socket.to(room).emit("answer", answer);
   });
 
-  // Handle ICE candidate exchange
   socket.on("ice-candidate", ({ candidate, room }) => {
     socket.to(room).emit("ice-candidate", candidate);
   });
@@ -110,11 +99,8 @@ io.on("connection", (socket) => {
           text: "User disconnected",
         });
       });
-
-    // Remove user from user manager
     userManager.removeUser(socket.id);
   });
 });
 
-// Export the app, io, and server instances
 export { app, io, server };

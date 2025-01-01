@@ -22,8 +22,8 @@ app.use(express.urlencoded({ extended: true }));
 app.use(passport.initialize());
 app.use("/api/v1", router);
 
-dbConnection().then(() => {
+// dbConnection().then(() => {
   server.listen(PORT, () => {
     console.log("Server running on port " + PORT);
   });
-});
+// });

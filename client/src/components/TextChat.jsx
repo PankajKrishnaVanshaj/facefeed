@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useSocket } from "./SocketProvider";
+import { useSocket } from "../hooks/SocketProvider";
 
 const TextChat = ({ room }) => {
   const socket = useSocket();
