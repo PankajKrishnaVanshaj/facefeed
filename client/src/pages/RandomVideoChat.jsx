@@ -24,17 +24,17 @@ const RandomVideoChat = () => {
     }
   }, [socket]);
 
-  useEffect(() => {
-    if (!roomId) {
-      const timer = setTimeout(() => {
-        console.warn("No roomId received within 14 seconds, refreshing the page..."); 
-        window.location.reload(); // Refresh the page
-      }, 14000);
+  // useEffect(() => {
+  //   if (!roomId) {
+  //     const timer = setTimeout(() => {
+  //       console.warn("No roomId received within 14 seconds, refreshing the page..."); 
+  //       window.location.reload(); // Refresh the page
+  //     }, 14000);
 
-      // Clear the timeout if roomId is set within 14 seconds
-      return () => clearTimeout(timer);
-    }
-  }, [roomId]);
+  //     // Clear the timeout if roomId is set within 14 seconds
+  //     return () => clearTimeout(timer);
+  //   }
+  // }, [roomId]);
 
   return (
     <div className="h-screen px-1.5 gap-x-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
