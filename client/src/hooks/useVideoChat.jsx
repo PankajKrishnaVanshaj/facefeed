@@ -36,8 +36,8 @@ const useVideoChat = (room) => {
       if (!parameters.encodings) {
         parameters.encodings = [{}];
       }
-      parameters.encodings[0].maxBitrate = 2500000; // Adjust bitrate for speed
-      parameters.encodings[0].minBitrate = 500000;
+      parameters.encodings[0].maxBitrate = 3000000;
+      parameters.encodings[0].minBitrate = 1000000;
       sender.setParameters(parameters);
     }
   };
@@ -57,12 +57,17 @@ const useVideoChat = (room) => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
-            facingMode: "user",
-            width: { ideal: 640 }, // Lower resolution for faster connections
-            height: { ideal: 360 },
-            frameRate: { ideal: 30, max: 30 },
+            facingMode: "user", // Use the front-facing camera (on mobile devices) or default camera.
+            width: { ideal: 1280 }, // Ideal video width of 1280px.
+            height: { ideal: 720 }, // Ideal video height of 720px.
+            frameRate: { ideal: 60, max: 60 }, // Ideal frame rate of 60fps, with a maximum of 60fps.
           },
-          audio: true,
+
+          audio: {
+            noiseSuppression: true, // Enable noise suppression to reduce background noise.
+            echoCancellation: true, // Enable echo cancellation to reduce feedback.
+            autoGainControl: true, // Automatically adjust audio volume to a comfortable level.
+          },
         });
 
         if (localVideoRef.current) {

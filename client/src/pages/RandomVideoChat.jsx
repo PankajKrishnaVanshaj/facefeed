@@ -6,29 +6,11 @@ import AdsSection from "../components/AdsSection";
 
 const RandomVideoChat = () => {
   const [roomId, setRoomId] = useState(null);
-  const [permissionsGranted, setPermissionsGranted] = useState(false);
-  const [permissionsError, setPermissionsError] = useState(null);
   const socket = useContext(SocketContext);
 
-  // Check for camera and microphone permissions
-  useEffect(() => {
-    const checkPermissions = async () => {
-      try {
-        await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        setPermissionsGranted(true);
-      } catch (error) {
-        console.error("Permission denied for camera and microphone:", error);
-        setPermissionsError(
-          "Unable to access camera or microphone. Please grant permissions."
-        );
-      }
-    };
-
-    checkPermissions();
-  }, []);
 
   useEffect(() => {
-    if (socket && permissionsGranted) {
+    if (socket) {
       const handleSendOffer = ({ roomId }) => {
         setRoomId(roomId); // Save the roomId received from the event
       };
@@ -40,7 +22,19 @@ const RandomVideoChat = () => {
         socket.off("send-offer", handleSendOffer);
       };
     }
-  }, [socket, permissionsGranted]);
+  }, [socket]);
+
+  // useEffect(() => {
+  //   if (!roomId) {
+  //     const timer = setTimeout(() => {
+  //       console.warn("No roomId received within 14 seconds, refreshing the page..."); 
+  //       window.location.reload(); // Refresh the page
+  //     }, 14000);
+
+  //     // Clear the timeout if roomId is set within 14 seconds
+  //     return () => clearTimeout(timer);
+  //   }
+  // }, [roomId]);
 
   return (
     <div className="h-screen px-1.5 gap-x-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
@@ -48,13 +42,7 @@ const RandomVideoChat = () => {
         <AdsSection />
       </div>
       <div className="rounded-lg shadow-lg text-white">
-        {permissionsError ? (
-          <div className="flex items-center justify-center h-full">
-            <p className="text-lg font-medium text-red-600">
-              {permissionsError}
-            </p>
-          </div>
-        ) : roomId ? (
+        {roomId ? (
           <VideoChat room={roomId} />
         ) : (
           <div className="flex items-center justify-center h-full">
@@ -65,13 +53,7 @@ const RandomVideoChat = () => {
         )}
       </div>
       <div className="bg-white rounded-lg shadow-lg p-6 hidden md:block">
-        {permissionsError ? (
-          <div className="flex items-center justify-center h-full">
-            <p className="text-lg font-medium text-red-600">
-              {permissionsError}
-            </p>
-          </div>
-        ) : roomId ? (
+        {roomId ? (
           <div className="h-full flex flex-col">
             <TextChat room={roomId} />
           </div>
