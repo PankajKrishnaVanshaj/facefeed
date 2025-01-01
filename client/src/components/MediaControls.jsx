@@ -23,7 +23,7 @@ const MediaControls = ({
   }
 
   return (
-    <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 z-10 flex items-center gap-1 p-1">
+    <div className="absolute bottom-1.5 left-1/2 transform -translate-x-1/2 z-10 flex items-center gap-1 p-1">
       <span
         onClick={leave}
         className="flex items-center justify-center w-10 h-10 bg-red-500 rounded-full cursor-pointer hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-600 transition ease-in-out duration-150"
