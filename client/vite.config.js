@@ -4,8 +4,8 @@ import { VitePWA } from "vite-plugin-pwa";
 
 // Define the PWA manifest
 const manifestForPlugin = {
-  registerType: "autoUpdate", // Set service worker registration type
-  includeAssets: ["favicon.ico", "apple-touch-icon.png", "robots.txt"], // Additional assets to include
+  registerType: "prompt", //  service worker registration type
+  includeAssets: ["favicon.ico", "apple-touch-icon.png"], // Additional assets to include
   manifest: {
     name: "PK Facefeed - Connect and Chat Randomly", // Full name of the PWA
     short_name: "PK Facefeed", // Short name for display purposes
@@ -51,26 +51,5 @@ const manifestForPlugin = {
 export default defineConfig({
   plugins: [
     react(), // React plugin for Vite
-    VitePWA({
-      manifest: manifestForPlugin.manifest,
-      registerType: manifestForPlugin.registerType,
-      includeAssets: manifestForPlugin.includeAssets,
-      workbox: {
-        // Workbox options for caching strategies
-        runtimeCaching: [
-          {
-            urlPattern: /.*\.(?:png|jpg|jpeg|gif|svg|webp|json|css|js)$/,
-            handler: "CacheFirst", // Cache static assets first
-            options: {
-              cacheName: "assets-cache",
-              expiration: {
-                maxEntries: 50, // Max number of entries to cache
-                maxAgeSeconds: 60 * 60 * 24 * 30, // Cache for 30 days
-              },
-            },
-          },
-        ],
-      },
-    }),
-  ],
-});
+    VitePWA(manifestForPlugin), // PWA plugin with the specified manifest
+  ],});
