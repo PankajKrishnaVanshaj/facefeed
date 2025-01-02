@@ -12,7 +12,7 @@ const useVideoChat = (room) => {
   const [isMicMuted, setIsMicMuted] = useState(false);
   const [isCameraOff, setIsCameraOff] = useState(false);
   const [inRoom, setInRoom] = useState(false);
-  const [videoResolution, setVideoResolution] = useState("144p");
+  const [videoResolution, setVideoResolution] = useState("480p");
   const [connectionStatus, setConnectionStatus] = useState("Connecting");
   const [reconnectAttempts, setReconnectAttempts] = useState(0);
 
@@ -20,32 +20,26 @@ const useVideoChat = (room) => {
     iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
   };
 
-  const bitrateMap = {
-    "144p": 300000,
-    "240p": 500000,
-    "360p": 800000,
+   // Updated bitrate map for 1080p, 720p, and 480p only
+   const bitrateMap = {
     "480p": 1000000,
     "720p": 2000000,
     "1080p": 3000000,
   };
 
+  // Updated resolution options
   const resolutionOptions = {
-    "144p": { width: { ideal: 256 }, height: { ideal: 144 } },
-    "240p": { width: { ideal: 426 }, height: { ideal: 240 } },
-    "360p": { width: { ideal: 640 }, height: { ideal: 360 } },
     "480p": { width: { ideal: 854 }, height: { ideal: 480 } },
     "720p": { width: { ideal: 1280 }, height: { ideal: 720 } },
     "1080p": { width: { ideal: 1920 }, height: { ideal: 1080 } },
   };
+
   const measureBandwidth = () => {
     // Replace this with real bandwidth estimation logic
     const estimatedBandwidth = Math.random() * 3000; // Placeholder
     if (estimatedBandwidth > 2500) return "1080p";
     if (estimatedBandwidth > 1500) return "720p";
-    if (estimatedBandwidth > 800) return "480p";
-    if (estimatedBandwidth > 400) return "360p";
-    if (estimatedBandwidth > 200) return "240p";
-    return "144p";
+    return "480p"; // Default to 480p if bandwidth is low
   };
 
   const optimizeBandwidth = (peerConnection, videoResolution) => {
@@ -59,12 +53,11 @@ const useVideoChat = (room) => {
           parameters.encodings = [{}];
         }
         parameters.encodings[0].maxBitrate =
-          bitrateMap[videoResolution] || 300000;
+          bitrateMap[videoResolution] || 1000000; // Default to 1Mbps for 480p
         sender.setParameters(parameters);
       }
     }
   };
-
   const adjustResolution = async () => {
     const newResolution = await measureBandwidth();
     if (newResolution !== videoResolution) {
@@ -194,8 +187,8 @@ const useVideoChat = (room) => {
   const attemptReconnect = () => {
     if (reconnectAttempts < 3) {
       setReconnectAttempts((prev) => prev + 1);
-      setConnectionStatus("Reconnecting...");
-      setupStream();
+    setConnectionStatus("Reconnecting...");
+    setupStream();
     } else {
       setConnectionStatus("Failed to connect");
     }
@@ -240,7 +233,7 @@ const useVideoChat = (room) => {
       videoTrack.enabled = !videoTrack.enabled;
       setIsCameraOff(!isCameraOff);
       if (!isCameraOff) {
-        setVideoResolution("240p");
+        setVideoResolution("480p");
       }
     }
   };
@@ -252,7 +245,6 @@ const useVideoChat = (room) => {
       setIsMicMuted(!isMicMuted);
     }
   };
-
   return {
     localVideoRef,
     remoteVideoRef,
