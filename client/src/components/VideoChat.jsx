@@ -1,7 +1,7 @@
-import VideoStream from './VideoStream';
-import MediaControls from './MediaControls';
-import useVideoChat from '../hooks/useVideoChat';
-import WaterMark from './WaterMark';
+import VideoStream from "./VideoStream";
+import MediaControls from "./MediaControls";
+import useVideoChat from "../hooks/useVideoChat";
+import WaterMark from "./WaterMark";
 
 const VideoChat = ({ room }) => {
   const {
@@ -11,10 +11,11 @@ const VideoChat = ({ room }) => {
     isMicMuted,
     isCameraOff,
     mediaError,
+    connectionStatus,
     endCall,
     toggleAudio,
     toggleMic,
-    toggleCamera
+    toggleCamera,
   } = useVideoChat(room);
 
   if (mediaError) {
@@ -35,7 +36,10 @@ const VideoChat = ({ room }) => {
 
   return (
     <div className="relative flex flex-col h-full py-1">
-      <WaterMark/>
+      <WaterMark />
+      {/* <div className="absolute justify-center left-1/2 transform -translate-x-1/2 z-10 flex items-center gap-1 p-1">
+        {connectionStatus}
+      </div> */}
       <VideoStream
         localVideoRef={localVideoRef}
         remoteVideoRef={remoteVideoRef}

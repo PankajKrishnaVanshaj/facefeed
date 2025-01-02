@@ -7,24 +7,17 @@ const useVideoChat = (room) => {
   const remoteVideoRef = useRef(null);
   const peerConnectionRef = useRef(null);
   const localStreamRef = useRef(null);
-  // const [isConnected, setIsConnected] = useState(false);
   const [mediaError, setMediaError] = useState(null);
   const [isAudioMuted, setIsAudioMuted] = useState(false);
   const [isMicMuted, setIsMicMuted] = useState(false);
   const [isCameraOff, setIsCameraOff] = useState(false);
   const [inRoom, setInRoom] = useState(false);
+  const [videoResolution, setVideoResolution] = useState("480p");
+  const [connectionStatus, setConnectionStatus] = useState("Connecting");
+  const [reconnectAttempts, setReconnectAttempts] = useState(0);
 
   const iceServers = {
-    iceServers: [
-      {
-        urls: [
-          "stun:stun1.l.google.com:19302",
-          "stun:stun2.l.google.com:19302",
-          "stun:stun.l.google.com:19302",
-        ],
-        //  urls: ["stun:stun.l.google.com:19302"],
-      },
-    ],
+    iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
   };
 
   const optimizeBandwidth = (peerConnection) => {
@@ -36,37 +29,49 @@ const useVideoChat = (room) => {
       if (!parameters.encodings) {
         parameters.encodings = [{}];
       }
-      parameters.encodings[0].maxBitrate = 3000000;
-      parameters.encodings[0].minBitrate = 1000000;
+
+      if (videoResolution === "1080p") {
+        parameters.encodings[0].maxBitrate = 3000000;
+      } else if (videoResolution === "720p") {
+        parameters.encodings[0].maxBitrate = 2000000;
+      } else {
+        parameters.encodings[0].maxBitrate = 1000000;
+      }
+
       sender.setParameters(parameters);
+    }
+  };
+
+  const attemptReconnect = () => {
+    if (reconnectAttempts < 3) {
+      setReconnectAttempts((prev) => prev + 1);
+      setConnectionStatus("Reconnecting...");
+      setupStream();
+    } else {
+      setConnectionStatus("Failed to connect");
     }
   };
 
   useEffect(() => {
     if (!socket) return;
-
-    setIsCameraOff(false);
+     setIsCameraOff(false);
     setIsMicMuted(false);
     setIsAudioMuted(false);
 
-    // setIsConnected(socket.connected);
-
-    peerConnectionRef.current = new RTCPeerConnection(iceServers);
-
     const setupStream = async () => {
       try {
+        setConnectionStatus("Connecting...");
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
-            facingMode: "user", // Use the front-facing camera (on mobile devices) or default camera.
-            width: { ideal: 1280 }, // Ideal video width of 1280px.
-            height: { ideal: 720 }, // Ideal video height of 720px.
-            frameRate: { ideal: 60, max: 60 }, // Ideal frame rate of 60fps, with a maximum of 60fps.
+            facingMode: "user",
+            width: { ideal: 640 },
+            height: { ideal: 360 },
+            frameRate: { ideal: 30 },
           },
-
           audio: {
-            noiseSuppression: true, // Enable noise suppression to reduce background noise.
-            echoCancellation: true, // Enable echo cancellation to reduce feedback.
-            autoGainControl: true, // Automatically adjust audio volume to a comfortable level.
+            noiseSuppression: true,
+            echoCancellation: true,
+            autoGainControl: true,
           },
         });
 
@@ -75,6 +80,7 @@ const useVideoChat = (room) => {
         }
         localStreamRef.current = stream;
 
+        peerConnectionRef.current = new RTCPeerConnection(iceServers);
         stream
           .getTracks()
           .forEach((track) =>
@@ -127,12 +133,17 @@ const useVideoChat = (room) => {
             await peerConnectionRef.current.setLocalDescription(offer);
             socket.emit("offer", { offer, room });
           });
+
+          socket.on("connection-error", attemptReconnect);
         } else {
           setInRoom(false);
         }
+
+        setConnectionStatus("Connected");
       } catch (error) {
         console.error("Error accessing media devices:", error);
         setMediaError(error.message);
+        setConnectionStatus("Failed to connect");
       }
     };
 
@@ -151,10 +162,9 @@ const useVideoChat = (room) => {
       socket.off("ice-candidate");
       socket.off("ready");
     };
-  }, [room, socket]);
+  }, [room, socket, videoResolution, reconnectAttempts]);
 
   const endCall = () => {
-    // Close the WebRTC peer connection if it exists
     if (peerConnectionRef.current) {
       peerConnectionRef.current.close();
       peerConnectionRef.current = null;
@@ -166,25 +176,21 @@ const useVideoChat = (room) => {
     //   localStreamRef.current.getAudioTracks().forEach((track) => track.stop());
     // }
 
-    // Leave the room and emit a delete-room event to notify others
     if (socket && room) {
       socket.emit("leave-room", { room });
       socket.emit("delete-room", { room });
     }
 
-    // Remove all socket event listeners to prevent memory leaks
     socket.off("offer");
     socket.off("answer");
     socket.off("ice-candidate");
     socket.off("ready");
 
-    // Reset connection status and state
     setInRoom(false);
-
-    // Optionally, you can reset other states if needed
     setIsAudioMuted(false);
     setIsMicMuted(false);
     setIsCameraOff(false);
+    setConnectionStatus("Disconnected");
   };
 
   const toggleAudio = () => {
@@ -196,6 +202,9 @@ const useVideoChat = (room) => {
     if (videoTrack) {
       videoTrack.enabled = !videoTrack.enabled;
       setIsCameraOff(!isCameraOff);
+      if (!isCameraOff) {
+        setVideoResolution("720p");
+      }
     }
   };
 
@@ -215,6 +224,7 @@ const useVideoChat = (room) => {
     isCameraOff,
     inRoom,
     mediaError,
+    connectionStatus,
     endCall,
     toggleAudio,
     toggleMic,
