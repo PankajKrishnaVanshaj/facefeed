@@ -4,7 +4,6 @@ import Home from "./pages/Home";
 import RandomVideoChat from "./pages/RandomVideoChat";
 
 const App = () => {
-
   return (
     <>
       <Header />
