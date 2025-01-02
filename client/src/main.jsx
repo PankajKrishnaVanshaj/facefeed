@@ -4,7 +4,7 @@ import "./index.css";
 import { SocketProvider } from "./hooks/SocketProvider.jsx";
 
 createRoot(document.getElementById("root")).render(
-  <SocketProvider>
+  // <SocketProvider>
     <App />
-  </SocketProvider>
+  // </SocketProvider>
 );
