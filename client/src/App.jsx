@@ -2,8 +2,11 @@ import { Route, Routes } from "react-router-dom";
 import Header from "./components/Header";
 import Home from "./pages/Home";
 import RandomVideoChat from "./pages/RandomVideoChat";
+import usePwaInstallPrompt from "./hooks/usePwaInstallPrompt";
 
 const App = () => {
+  usePwaInstallPrompt();
+
   return (
     <>
       <Header />
