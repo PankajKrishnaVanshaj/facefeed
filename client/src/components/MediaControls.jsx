@@ -53,25 +53,31 @@ const MediaControls = ({
   };
 
   const handlePwaInstall = () => {
+    // Check if the PWA prompt is available
     if (isInstalled) {
       alert("PK Facefeed is already installed!");
       return;
     }
-
+  
+    // Check if the beforeinstallprompt event is available
     if (deferredPrompt) {
-      deferredPrompt.prompt(); // Show the install prompt
+      // Show the install prompt
+      deferredPrompt.prompt();
       deferredPrompt.userChoice.then((choiceResult) => {
         if (choiceResult.outcome === "accepted") {
           console.log("User accepted the PWA install prompt.");
         } else {
           console.log("User dismissed the PWA install prompt.");
         }
-        setDeferredPrompt(null); // Clear the saved prompt
+        setDeferredPrompt(null); // Clear the saved prompt after user response
       });
     } else {
       console.warn("No PWA install prompt available.");
+      // You could show a custom message or a fallback for unsupported browsers
+      alert("Sorry, PWA installation is not supported on your device/browser.");
     }
   };
+  
 
   return (
     <div className="absolute bottom-1.5 left-1/2 transform -translate-x-1/2 z-10 flex items-center gap-1 p-1">
