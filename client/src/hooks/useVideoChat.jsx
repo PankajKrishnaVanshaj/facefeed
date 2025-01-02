@@ -20,8 +20,8 @@ const useVideoChat = (room) => {
     iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
   };
 
-   // Updated bitrate map for 1080p, 720p, and 480p only
-   const bitrateMap = {
+  // Updated bitrate map for 1080p, 720p, and 480p only
+  const bitrateMap = {
     "480p": 1000000,
     "720p": 2000000,
     "1080p": 3000000,
@@ -84,7 +84,10 @@ const useVideoChat = (room) => {
         setVideoResolution(initialResolution);
 
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: resolutionOptions[initialResolution],
+          video: {
+            ...resolutionOptions[initialResolution],
+            facingMode: "user", // Use the front-facing camera
+          },
           audio: {
             noiseSuppression: true,
             echoCancellation: true,
@@ -187,8 +190,8 @@ const useVideoChat = (room) => {
   const attemptReconnect = () => {
     if (reconnectAttempts < 3) {
       setReconnectAttempts((prev) => prev + 1);
-    setConnectionStatus("Reconnecting...");
-    setupStream();
+      setConnectionStatus("Reconnecting...");
+      setupStream();
     } else {
       setConnectionStatus("Failed to connect");
     }
