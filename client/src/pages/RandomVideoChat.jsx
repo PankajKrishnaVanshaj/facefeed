@@ -38,7 +38,7 @@ const RandomVideoChat = () => {
 
   // Ensuring socket interaction only after permissions are granted
   useEffect(() => {
-    if (permissionsGranted && socket) {
+    if ( socket) {
       const handleSendOffer = ({ roomId }) => {
         setRoomId(roomId); // Save the roomId received from the event
       };
@@ -51,7 +51,7 @@ const RandomVideoChat = () => {
         socket.off("send-offer", handleSendOffer);
       };
     }
-  }, [permissionsGranted, socket]); // Ensure effect runs only after permissions are granted
+  }, [ socket]); // Ensure effect runs only after permissions are granted
 
   // Handle case when no roomId is received within a timeout
   // useEffect(() => {
