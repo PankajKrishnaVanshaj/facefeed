@@ -49,6 +49,9 @@ const manifestForPlugin = {
 };
 
 export default defineConfig({
+  build: {
+    sourcemap: true, // Ensure sourcemaps are enabled for production
+  },
   plugins: [
     react(), // React plugin for Vite
     VitePWA(manifestForPlugin), // PWA plugin with the specified manifest
