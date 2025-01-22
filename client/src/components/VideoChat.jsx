@@ -11,7 +11,6 @@ const VideoChat = ({ room }) => {
     isMicMuted,
     isCameraOff,
     mediaError,
-    connectionStatus,
     endCall,
     toggleAudio,
     toggleMic,
@@ -37,9 +36,7 @@ const VideoChat = ({ room }) => {
   return (
     <div className="relative flex flex-col h-full py-1">
       <WaterMark />
-      {/* <div className="absolute justify-center left-1/2 transform -translate-x-1/2 z-10 flex items-center gap-1 p-1">
-        {connectionStatus}
-      </div> */}
+
       <VideoStream
         localVideoRef={localVideoRef}
         remoteVideoRef={remoteVideoRef}

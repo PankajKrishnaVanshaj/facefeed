@@ -80,7 +80,7 @@ const RandomVideoChat = () => {
 
   if (!roomId) {
     return (
-      <div className="h-[90vh]">
+      <div className="h-[88vh]">
         <div className="flex items-center justify-center h-full">
           <p className="text-2xl font-medium bg-primary-gradient text-transparent bg-clip-text animate-pulse">
             Waiting for connection...{" "}

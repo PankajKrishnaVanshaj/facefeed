@@ -19,53 +19,65 @@ app.use(express.static("public"));
 const rooms = {}; // In-memory room storage
 
 io.on("connection", (socket) => {
-  console.log("User connected:", socket.id);
+  // console.log("User connected:", socket.id);
   userManager.addUser(socket);
 
-  // Handle room events
+  // console.log("Current rooms:", rooms);
+
   socket.on("join-room", ({ room }) => {
     if (!room) {
-      console.error("No room specified");
+      // console.error("No room specified");
       return;
     }
+
     socket.join(room);
-    socket.to(room).emit("ready");
     rooms[room] = rooms[room] || [];
-    rooms[room].push(socket.id);
+    if (!rooms[room].includes(socket.id)) {
+      rooms[room].push(socket.id);
+    }
+
+    // console.log(`User ${socket.id} joined room ${room}`);
+    // console.log("Updated rooms:", rooms);
+
+    socket.to(room).emit("ready");
   });
 
-  socket.on("leave-room", ({ room }) => {
+  socket.on("leave-room", async ({ room }) => {
+    if (!room) {
+      // console.error("No room specified");
+      return;
+    }
+
+    // Leave the room
     socket.leave(room);
-    // Check if the room exists and remove the socket ID from the room's list
+
+    // Update the room's user list
     if (rooms[room]) {
       rooms[room] = rooms[room].filter((id) => id !== socket.id);
+      if (rooms[room].length === 0) {
+        delete rooms[room]; // Remove empty room
+      }
     }
+
+    // console.log(`User ${socket.id} left room ${room}`);
+    // console.log("Updated rooms:", rooms);
+
+    // Notify other users in the room
     socket
       .to(room)
       .emit("message", { userId: socket.id, text: "User left the chat room" });
-  });
 
-  // If the room has 1 or fewer users after the user leaves, delete it
-  socket.on("delete-room", ({ room }) => {
-    if (rooms[room] ) {
-      delete rooms[room];
-      io.to(room).emit("room-deleted", {
-        message: "Room deleted due to insufficient users",
-      });
-      console.log(`Room ${room} has been deleted.`);
-    } else {
-      console.log(
-        rooms[room]
-          ? `Room ${room} is still active with ${rooms[room].length} users.`
-          : `Room ${room} does not exist.`
-      );
+    // Add user to UserManager queue
+    try {
+      await userManager.addUser(socket);
+      // console.log(
+      //   `User ${socket.id} added to UserManager queue after leaving room ${room}`
+      // );
+    } catch (error) {
+      console.error("Error adding user to UserManager:", error);
     }
-
-    userManager.removeUser(socket.id);
-    userManager.addUser(socket);
   });
 
-  // Handle chat messages
   socket.on("chat", (message) => {
     const roomsList = Array.from(socket.rooms).filter(
       (room) => room !== socket.id
@@ -73,24 +85,36 @@ io.on("connection", (socket) => {
     roomsList.forEach((room) =>
       io.to(room).emit("message", { userId: socket.id, text: message })
     );
+    // console.log(`User ${socket.id} sent message: ${message}`);
   });
 
-  // Handle WebRTC signaling events
   socket.on("offer", ({ offer, room }) => {
     socket.to(room).emit("offer", offer);
+    // console.log(`Offer sent to room ${room} from user ${socket.id}`);
   });
 
   socket.on("answer", ({ answer, room }) => {
     socket.to(room).emit("answer", answer);
+    // console.log(`Answer sent to room ${room} from user ${socket.id}`);
   });
 
   socket.on("ice-candidate", ({ candidate, room }) => {
     socket.to(room).emit("ice-candidate", candidate);
+    // console.log(`ICE candidate sent to room ${room} from user ${socket.id}`);
   });
 
-  // Handle disconnection
   socket.on("disconnect", () => {
-    console.log("User disconnected:", socket.id);
+    // console.log("User disconnected:", socket.id);
+
+    Object.keys(rooms).forEach((room) => {
+      rooms[room] = rooms[room].filter((id) => id !== socket.id);
+      if (rooms[room].length === 0) {
+        delete rooms[room];
+      }
+    });
+
+    // console.log("Updated rooms after disconnection:", rooms);
+
     Array.from(socket.rooms)
       .filter((room) => room !== socket.id)
       .forEach((room) => {
@@ -99,6 +123,7 @@ io.on("connection", (socket) => {
           text: "User disconnected",
         });
       });
+
     userManager.removeUser(socket.id);
   });
 });

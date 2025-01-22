@@ -9,7 +9,7 @@ export const hashString = async (userValue) => {
     const hashedPassword = await bcrypt.hash(userValue, salt);
     return hashedPassword;
   } catch (error) {
-    console.error("Error hashing string:", error);
+    // console.error("Error hashing string:", error);
     throw new Error("Hashing failed");
   }
 };
@@ -20,7 +20,7 @@ export const compareString = async (userPassword, hashedPassword) => {
     const isMatch = await bcrypt.compare(userPassword, hashedPassword);
     return isMatch;
   } catch (error) {
-    console.error("Error comparing strings:", error);
+    // console.error("Error comparing strings:", error);
     throw new Error("Comparison failed");
   }
 };
@@ -32,7 +32,7 @@ export function createJWT(id) {
       expiresIn: "7d",
     });
   } catch (error) {
-    console.error("Error creating JWT:", error);
+    // console.error("Error creating JWT:", error);
     throw new Error("JWT creation failed");
   }
 }
@@ -52,7 +52,7 @@ export const generateUniqueUsername = async (baseUsername) => {
 
     return username;
   } catch (error) {
-    console.error("Error generating unique username:", error);
+    // console.error("Error generating unique username:", error);
     throw new Error("Username generation failed");
   }
 };
