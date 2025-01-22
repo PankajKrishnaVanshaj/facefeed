@@ -35,7 +35,9 @@ export const SocketProvider = ({ children }) => {
       const hasPermission = await checkPermissions(); // Check permissions before proceeding
 
       if (hasPermission && location.pathname === "/random-video-chat") {
-        const newSocket = io(import.meta.env.VITE_API_URL);
+        const newSocket = io(import.meta.env.VITE_API_URL, {
+          withCredentials: true,
+        });
         setSocket(newSocket);
 
         // Cleanup on component unmount or path change
@@ -47,7 +49,6 @@ export const SocketProvider = ({ children }) => {
 
     // Only initialize the socket if permissions are granted
     initializeSocket();
-
   }, [location.pathname]); // Re-run the effect whenever the pathname changes
 
   return (
