@@ -10,6 +10,8 @@ const io = new SocketIO(server, {
   cors: {
     origin: [process.env.CLIENT],
     methods: ["GET", "POST"],
+    credentials: true,                      // Allow cookies/credentials
+
   },
 });
 
