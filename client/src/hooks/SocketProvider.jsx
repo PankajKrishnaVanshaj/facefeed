@@ -35,7 +35,7 @@ export const SocketProvider = ({ children }) => {
       const hasPermission = await checkPermissions(); // Check permissions before proceeding
 
       if (hasPermission && location.pathname === "/random-video-chat") {
-        const newSocket = io('https://server.facefeed.pankri.com');
+        const newSocket = io(import.meta.env.VITE_API_URL);
         setSocket(newSocket);
 
         // Cleanup on component unmount or path change

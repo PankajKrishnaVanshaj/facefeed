@@ -8,7 +8,7 @@ const app = express();
 const server = http.createServer(app);
 const io = new SocketIO(server, {
   cors: {
-    origin: ["https://facefeed.pankri.com"],
+    origin: [`${process.env.CLIENT_HOST}`],
     methods: ["GET", "POST"],
     credentials: true,
   },
