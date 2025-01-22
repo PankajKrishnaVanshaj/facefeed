@@ -11,7 +11,7 @@ dotenv.config();
 const PORT = process.env.PORT;
 
 const corsOptions = {
-  origin: [process.env.CLIENT_HOST],
+  origin: [process.env.CLIENT],
   credentials: true,
   optionsSuccessStatus: 200,
 };
