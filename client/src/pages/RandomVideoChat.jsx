@@ -8,22 +8,6 @@ const RandomVideoChat = () => {
   const [roomId, setRoomId] = useState(null);
   const socket = useContext(SocketContext);
 
-  // Function to check permissions immediately on page visit
-  const checkPermissions = async () => {
-    try {
-      await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: true,
-      });
-    } catch (error) {
-      console.error("Permission request failed:", error);
-    }
-  };
-
-  useEffect(() => {
-    checkPermissions();
-  }, []);
-
   // Ensuring socket interaction only after permissions are granted
   useEffect(() => {
     if (socket) {

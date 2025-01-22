@@ -1,24 +1,6 @@
-"use client";
-import { useEffect } from "react";
 import { Link } from "react-router-dom";
 
 function Home() {
-  // Function to check permissions immediately on page visit
-  const checkPermissions = async () => {
-    try {
-      await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: true,
-      });
-    } catch (error) {
-      console.error("Permission request failed:", error);
-    }
-  };
-
-  useEffect(() => {
-    checkPermissions();
-  }, []);
-
   return (
     <section className="">
       <div className="flex items-baseline justify-center pt-20">
