@@ -25,6 +25,6 @@ app.use("/api/v1", router);
 
 // dbConnection().then(() => {
   server.listen(PORT, () => {
-    // console.log("Server running on port " + PORT);
+    console.log("Server running on port " + PORT);
   });
 // });
