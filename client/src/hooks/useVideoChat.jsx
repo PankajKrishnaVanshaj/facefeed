@@ -94,6 +94,10 @@ const useVideoChat = (room) => {
   useEffect(() => {
     if (!socket) return;
 
+    setIsCameraOff(true)
+    setIsMicMuted(true)
+    setIsAudioMuted(true)
+
     const setupStream = async () => {
       try {
         const initialResolution = "240p";
