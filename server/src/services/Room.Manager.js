@@ -2,7 +2,7 @@ class Room {
   constructor(user1, user2 = null) {
     this.user1 = user1;
     this.user2 = user2;
-    this.roomId = `room-${Date.now()}-${crypto.randomUUID()}`;
+    this.roomId = `room-${Date.now()}-${Math.floor(Math.random() * 10000)}`; 
   }
 
   getUsers() {
@@ -37,7 +37,6 @@ export class RoomManager {
   }
 
   generateRoomId() {
-    // Combine the current timestamp and a unique random UUID for a highly unique room ID
-    return `room-${Date.now()}-${crypto.randomUUID()}`;
+    return `room-${Date.now()}-${Math.floor(Math.random() * 10000)}`; 
   }
 }
