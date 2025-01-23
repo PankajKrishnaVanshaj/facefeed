@@ -94,9 +94,9 @@ const useVideoChat = (room) => {
   useEffect(() => {
     if (!socket) return;
 
-    setIsCameraOff(true)
-    setIsMicMuted(true)
-    setIsAudioMuted(true)
+    setIsCameraOff(false)
+    setIsMicMuted(false)
+    setIsAudioMuted(false)
 
     const setupStream = async () => {
       try {
