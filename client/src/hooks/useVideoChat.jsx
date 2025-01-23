@@ -7,6 +7,7 @@ const useVideoChat = (room) => {
   const remoteVideoRef = useRef(null);
   const peerConnectionRef = useRef(null);
   const localStreamRef = useRef(null);
+  const pendingOffers = useRef([]); // Queue for pending offers
 
   const [mediaError, setMediaError] = useState(null);
   const [isAudioMuted, setIsAudioMuted] = useState(false);
@@ -22,17 +23,6 @@ const useVideoChat = (room) => {
   const resolutionOptions = {
     "144p": { width: { ideal: 256 }, height: { ideal: 144 } },
     "240p": { width: { ideal: 426 }, height: { ideal: 240 } },
-    "360p": { width: { ideal: 640 }, height: { ideal: 360 } },
-    "480p": { width: { ideal: 854 }, height: { ideal: 480 } },
-  };
-
-  const measureBandwidth = () => {
-    // Placeholder for bandwidth estimation
-    const estimatedBandwidth = Math.random() * 3000; // Simulate varying bandwidth
-    if (estimatedBandwidth > 2500) return "480p";
-    if (estimatedBandwidth > 1500) return "360p";
-    if (estimatedBandwidth > 800) return "240p";
-    return "144p";
   };
 
   const optimizeBandwidth = (peerConnection) => {
@@ -44,23 +34,38 @@ const useVideoChat = (room) => {
       if (videoSender) {
         const parameters = videoSender.getParameters();
         if (!parameters.encodings) parameters.encodings = [{}];
+
         parameters.encodings[0].maxBitrate =
-          videoResolution === "480p" ? 1500000 : 500000;
+          videoResolution === "240p" ? 500000 : 250000;
+
         videoSender.setParameters(parameters);
       }
     }
   };
 
-  const adjustResolution = async () => {
-    const newResolution = measureBandwidth();
-    if (newResolution !== videoResolution) {
-      setVideoResolution(newResolution);
+  const handleOffer = async (offer) => {
+    try {
+      const pc = peerConnectionRef.current;
 
-      const videoTrack = localStreamRef.current?.getVideoTracks()[0];
-      if (videoTrack) {
-        await videoTrack.applyConstraints(resolutionOptions[newResolution]);
-        optimizeBandwidth(peerConnectionRef.current);
+      if (!pc || pc.signalingState !== "stable") {
+        console.warn("Peer connection not ready. Queueing offer.");
+        pendingOffers.current.push(offer);
+        return;
       }
+
+      await pc.setRemoteDescription(new RTCSessionDescription(offer));
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      socket.emit("answer", { answer, room });
+    } catch (error) {
+      console.error("Error handling offer:", error);
+    }
+  };
+
+  const processPendingOffers = async () => {
+    while (pendingOffers.current.length > 0) {
+      const offer = pendingOffers.current.shift();
+      await handleOffer(offer);
     }
   };
 
@@ -69,7 +74,7 @@ const useVideoChat = (room) => {
 
     const setupStream = async () => {
       try {
-        const initialResolution = measureBandwidth();
+        const initialResolution = "240p";
         setVideoResolution(initialResolution);
 
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -112,33 +117,42 @@ const useVideoChat = (room) => {
           socket.emit("join-room", { room });
           setInRoom(true);
 
-          socket.on("offer", async (offer) => {
-            await peerConnectionRef.current.setRemoteDescription(
-              new RTCSessionDescription(offer)
-            );
-            const answer = await peerConnectionRef.current.createAnswer();
-            await peerConnectionRef.current.setLocalDescription(answer);
-            socket.emit("answer", { answer, room });
-          });
+          socket.on("offer", handleOffer);
 
           socket.on("answer", async (answer) => {
-            await peerConnectionRef.current.setRemoteDescription(
-              new RTCSessionDescription(answer)
-            );
+            try {
+              const pc = peerConnectionRef.current;
+              if (!pc) return;
+              await pc.setRemoteDescription(new RTCSessionDescription(answer));
+              processPendingOffers();
+            } catch (error) {
+              console.error("Error handling answer:", error);
+            }
           });
 
           socket.on("ice-candidate", async (candidate) => {
-            if (candidate) {
-              await peerConnectionRef.current.addIceCandidate(
-                new RTCIceCandidate(candidate)
-              );
+            try {
+              if (candidate && peerConnectionRef.current) {
+                await peerConnectionRef.current.addIceCandidate(
+                  new RTCIceCandidate(candidate)
+                );
+              }
+            } catch (error) {
+              console.error("Error adding ICE candidate:", error);
             }
           });
 
           socket.on("ready", async () => {
-            const offer = await peerConnectionRef.current.createOffer();
-            await peerConnectionRef.current.setLocalDescription(offer);
-            socket.emit("offer", { offer, room });
+            try {
+              const pc = peerConnectionRef.current;
+              if (!pc) return;
+
+              const offer = await pc.createOffer();
+              await pc.setLocalDescription(offer);
+              socket.emit("offer", { offer, room });
+            } catch (error) {
+              console.error("Error creating offer:", error);
+            }
           });
         }
       } catch (error) {
@@ -149,16 +163,14 @@ const useVideoChat = (room) => {
 
     setupStream();
 
-    const bandwidthInterval = setInterval(adjustResolution, 5000);
-
     return () => {
-      clearInterval(bandwidthInterval);
       if (peerConnectionRef.current) {
         peerConnectionRef.current.close();
         peerConnectionRef.current = null;
       }
       if (localStreamRef.current) {
         localStreamRef.current.getTracks().forEach((track) => track.stop());
+        localStreamRef.current = null;
       }
       socket.off("offer");
       socket.off("answer");
@@ -168,14 +180,20 @@ const useVideoChat = (room) => {
   }, [room, socket]);
 
   const endCall = () => {
-    if (peerConnectionRef.current) peerConnectionRef.current.close();
-    if (localStreamRef.current)
+    if (peerConnectionRef.current) {
+      peerConnectionRef.current.close();
+      peerConnectionRef.current = null;
+    }
+    if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach((track) => track.stop());
+      localStreamRef.current = null;
+    }
     socket.emit("leave-room", { room });
     setInRoom(false);
   };
 
   const toggleAudio = () => setIsAudioMuted((prev) => !prev);
+
   const toggleCamera = () => {
     const videoTrack = localStreamRef.current?.getVideoTracks()[0];
     if (videoTrack) {
