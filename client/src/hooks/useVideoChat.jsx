@@ -47,25 +47,47 @@ const useVideoChat = (room) => {
     try {
       const pc = peerConnectionRef.current;
 
-      if (!pc || pc.signalingState !== "stable") {
-        console.warn("Peer connection not ready. Queueing offer.");
-        pendingOffers.current.push(offer);
-        return;
-      }
+      if (!pc) return;
 
-      await pc.setRemoteDescription(new RTCSessionDescription(offer));
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      socket.emit("answer", { answer, room });
+      // Only set the remote description if it's in the 'stable' state or 'have-remote-offer'
+      if (
+        pc.signalingState === "stable" ||
+        pc.signalingState === "have-remote-offer"
+      ) {
+        await pc.setRemoteDescription(new RTCSessionDescription(offer));
+
+        // Create and set the local answer description
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+
+        // Emit the answer to the signaling server
+        socket.emit("answer", { answer, room });
+      } else {
+        // Queue the offer if the connection is not stable yet
+        pendingOffers.current.push(offer);
+      }
     } catch (error) {
       console.error("Error handling offer:", error);
     }
   };
 
   const processPendingOffers = async () => {
-    while (pendingOffers.current.length > 0) {
-      const offer = pendingOffers.current.shift();
-      await handleOffer(offer);
+    try {
+      const pc = peerConnectionRef.current;
+
+      if (
+        pc &&
+        (pc.signalingState === "stable" ||
+          pc.signalingState === "have-remote-offer") &&
+        pendingOffers.current.length > 0
+      ) {
+        while (pendingOffers.current.length > 0) {
+          const offer = pendingOffers.current.shift();
+          await handleOffer(offer);
+        }
+      }
+    } catch (error) {
+      console.error("Error processing pending offers:", error);
     }
   };
 
