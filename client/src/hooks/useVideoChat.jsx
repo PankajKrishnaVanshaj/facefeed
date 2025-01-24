@@ -17,7 +17,6 @@ const useVideoChat = (room) => {
   const [inRoom, setInRoom] = useState(false);
   const [videoResolution, setVideoResolution] = useState("144p");
 
-  // Track the step completion
   const [isOfferCompleted, setIsOfferCompleted] = useState(false);
   const [isAnswerCompleted, setIsAnswerCompleted] = useState(false);
   const [isIceCandidateCompleted, setIsIceCandidateCompleted] = useState(false);
@@ -65,18 +64,17 @@ const useVideoChat = (room) => {
 
       if (!pc) return;
 
-      if (
-        pc.signalingState === "stable" ||
-        pc.signalingState === "have-remote-offer"
-      ) {
+      // If signaling state is stable, set remote description and create an answer
+      if (pc.signalingState === "stable" || pc.signalingState === "have-remote-offer") {
         await pc.setRemoteDescription(new RTCSessionDescription(offer));
 
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
-
+        
         socket.emit("answer", { answer, room });
         setIsOfferCompleted(true); // Offer completed
       } else {
+        // If signaling state is not stable, push the offer to a queue
         pendingOffers.current.push(offer);
       }
     } catch (error) {
@@ -144,10 +142,7 @@ const useVideoChat = (room) => {
         socket.on("answer", async (answer) => {
           try {
             const pc = peerConnectionRef.current;
-            if (
-              pc.signalingState === "stable" ||
-              pc.signalingState === "have-local-offer"
-            ) {
+            if (pc.signalingState === "stable" || pc.signalingState === "have-local-offer") {
               await pc.setRemoteDescription(new RTCSessionDescription(answer));
               setIsAnswerCompleted(true); // Answer completed
               await processPendingIceCandidates();
