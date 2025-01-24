@@ -9,6 +9,13 @@ const VideoStream = ({ localVideoRef, remoteVideoRef, isAudioMuted }) => {
           muted={isAudioMuted}
           playsInline
           className="w-full h-full object-cover transform scale-x-[-1]"
+          style={{
+            backgroundImage: 'url("/loading.gif")',
+            backgroundRepeat: "no-repeat", // Ensures the image repeats
+            backgroundSize: "auto", // Keeps the original size of the image
+            backgroundPosition: "center", // Centers the background
+            backgroundColor: "black",
+          }}
         />
       </div>
 
@@ -20,6 +27,13 @@ const VideoStream = ({ localVideoRef, remoteVideoRef, isAudioMuted }) => {
           muted
           playsInline
           className="w-full h-full object-cover transform scale-x-[-1]"
+          style={{
+            backgroundImage: 'url("/loading.gif")',
+            backgroundRepeat: "no-repeat", // Ensures the image repeats
+            backgroundSize: "auto", // Keeps the original size of the image
+            backgroundPosition: "center", // Centers the background
+            backgroundColor: "black",
+          }}
         />
       </div>
     </div>
