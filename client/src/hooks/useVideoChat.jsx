@@ -94,10 +94,6 @@ const useVideoChat = (room) => {
   useEffect(() => {
     if (!socket) return;
 
-    setIsCameraOff(false)
-    setIsMicMuted(false)
-    setIsAudioMuted(false)
-
     const setupStream = async () => {
       try {
         const initialResolution = "240p";
@@ -206,6 +202,10 @@ const useVideoChat = (room) => {
   }, [room, socket]);
 
   const endCall = () => {
+    setIsCameraOff(false);
+    setIsMicMuted(false);
+    setIsAudioMuted(false);
+
     if (peerConnectionRef.current) {
       peerConnectionRef.current.close();
       peerConnectionRef.current = null;
