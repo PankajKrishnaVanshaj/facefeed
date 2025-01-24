@@ -28,6 +28,7 @@ const checkPermissions = async () => {
 
 export const SocketProvider = ({ children }) => {
   const [socket, setSocket] = useState(null);
+  const [isConfirmed, setIsConfirmed] = useState(false); // State for user confirmation
   const location = useLocation(); // get the current location
 
   useEffect(() => {
@@ -35,21 +36,41 @@ export const SocketProvider = ({ children }) => {
       const hasPermission = await checkPermissions(); // Check permissions before proceeding
 
       if (hasPermission && location.pathname === "/random-video-chat") {
-        const newSocket = io(import.meta.env.VITE_API_URL, {
-          withCredentials: true,
-        });
-        setSocket(newSocket);
+        // Only proceed if permissions are granted and user has confirmed
+        if (isConfirmed) {
+          const newSocket = io(import.meta.env.VITE_API_URL, {
+            withCredentials: true,
+          });
+          setSocket(newSocket);
 
-        // Cleanup on component unmount or path change
-        return () => {
-          if (newSocket) newSocket.disconnect();
-        };
+          // Cleanup on component unmount or path change
+          return () => {
+            if (newSocket) newSocket.disconnect();
+          };
+        }
       }
     };
 
-    // Only initialize the socket if permissions are granted
+    // Only initialize the socket if permissions are granted and the user confirmed
     initializeSocket();
-  }, [location.pathname]); // Re-run the effect whenever the pathname changes
+  }, [location.pathname, isConfirmed]); // Re-run when location or confirmation changes
+
+  // Function to prompt user for confirmation
+  const handleConfirmation = () => {
+    const userConfirmed = window.confirm(
+      "Are you sure you want to call a random person? You may be connected with someone you don't know."
+    );
+    if (userConfirmed) {
+      setIsConfirmed(true); // User confirmed, proceed with socket initialization
+    }
+  };
+
+  useEffect(() => {
+    // Trigger confirmation when the component is mounted or pathname changes
+    if (location.pathname === "/random-video-chat" && !isConfirmed) {
+      handleConfirmation();
+    }
+  }, [location.pathname, isConfirmed]);
 
   return (
     <SocketContext.Provider value={socket}>{children}</SocketContext.Provider>
