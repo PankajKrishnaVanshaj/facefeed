@@ -15,12 +15,6 @@ const useVideoChat = (room) => {
   const [isMicMuted, setIsMicMuted] = useState(false);
   const [isCameraOff, setIsCameraOff] = useState(false);
   const [inRoom, setInRoom] = useState(false);
-  const [videoResolution, setVideoResolution] = useState("144p");
-
-  const [isOfferCompleted, setIsOfferCompleted] = useState(false);
-  const [isAnswerCompleted, setIsAnswerCompleted] = useState(false);
-  const [isIceCandidateCompleted, setIsIceCandidateCompleted] = useState(false);
-  const [isReadyCompleted, setIsReadyCompleted] = useState(false);
 
   const iceServers = {
     iceServers: [
@@ -35,46 +29,20 @@ const useVideoChat = (room) => {
     ],
   };
 
-  const resolutionOptions = {
-    "144p": { width: { ideal: 256 }, height: { ideal: 144 } },
-    "240p": { width: { ideal: 426 }, height: { ideal: 240 } },
-  };
-
-  const optimizeBandwidth = (peerConnection) => {
-    if (peerConnection) {
-      const videoSender = peerConnection
-        .getSenders()
-        .find((sender) => sender.track?.kind === "video");
-
-      if (videoSender) {
-        const parameters = videoSender.getParameters();
-        if (!parameters.encodings) parameters.encodings = [{}];
-
-        parameters.encodings[0].maxBitrate =
-          videoResolution === "240p" ? 500000 : 250000;
-
-        videoSender.setParameters(parameters);
-      }
-    }
-  };
-
   const handleOffer = async (offer) => {
     try {
       const pc = peerConnectionRef.current;
 
       if (!pc) return;
 
-      // If signaling state is stable, set remote description and create an answer
       if (pc.signalingState === "stable" || pc.signalingState === "have-remote-offer") {
         await pc.setRemoteDescription(new RTCSessionDescription(offer));
 
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
-        
+
         socket.emit("answer", { answer, room });
-        setIsOfferCompleted(true); // Offer completed
       } else {
-        // If signaling state is not stable, push the offer to a queue
         pendingOffers.current.push(offer);
       }
     } catch (error) {
@@ -93,17 +61,13 @@ const useVideoChat = (room) => {
           console.error("Error adding ICE candidate:", error);
         }
       }
-      setIsIceCandidateCompleted(true); // ICE candidates processing completed
     }
   };
 
   const setupStream = async () => {
     try {
-      const initialResolution = "240p";
-      setVideoResolution(initialResolution);
-
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { ...resolutionOptions[initialResolution], facingMode: "user" },
+        video: true,
         audio: {
           noiseSuppression: true,
           echoCancellation: true,
@@ -119,8 +83,6 @@ const useVideoChat = (room) => {
       stream
         .getTracks()
         .forEach((track) => peerConnectionRef.current.addTrack(track, stream));
-
-      optimizeBandwidth(peerConnectionRef.current);
 
       peerConnectionRef.current.ontrack = (event) => {
         if (remoteVideoRef.current)
@@ -144,7 +106,6 @@ const useVideoChat = (room) => {
             const pc = peerConnectionRef.current;
             if (pc.signalingState === "stable" || pc.signalingState === "have-local-offer") {
               await pc.setRemoteDescription(new RTCSessionDescription(answer));
-              setIsAnswerCompleted(true); // Answer completed
               await processPendingIceCandidates();
             }
           } catch (error) {
@@ -157,7 +118,6 @@ const useVideoChat = (room) => {
             const pc = peerConnectionRef.current;
             if (pc.remoteDescription) {
               await pc.addIceCandidate(new RTCIceCandidate(candidate));
-              setIsIceCandidateCompleted(true); // ICE candidate completed
             } else {
               pendingIceCandidates.current.push(candidate);
             }
@@ -174,7 +134,6 @@ const useVideoChat = (room) => {
             const offer = await pc.createOffer();
             await pc.setLocalDescription(offer);
             socket.emit("offer", { offer, room });
-            setIsReadyCompleted(true); // Ready step completed
           } catch (error) {
             console.error("Error creating offer:", error);
           }
@@ -254,10 +213,6 @@ const useVideoChat = (room) => {
     toggleAudio,
     toggleMic,
     toggleCamera,
-    isOfferCompleted,
-    isAnswerCompleted,
-    isIceCandidateCompleted,
-    isReadyCompleted,
   };
 };
 
