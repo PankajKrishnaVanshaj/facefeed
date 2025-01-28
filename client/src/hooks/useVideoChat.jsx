@@ -7,7 +7,6 @@ const useVideoChat = (room) => {
   const remoteVideoRef = useRef(null);
   const peerConnectionRef = useRef(null);
   const localStreamRef = useRef(null);
-  const pendingOffers = useRef([]); // Queue for pending offers
   const pendingIceCandidates = useRef([]); // Queue for pending ICE candidates
 
   const [mediaError, setMediaError] = useState(null);
@@ -21,30 +20,47 @@ const useVideoChat = (room) => {
       { urls: "stun:stun.l.google.com:19302" },
       { urls: "stun:global.stun.twilio.com:3478" },
       { urls: "stun:stun.services.mozilla.com" },
-      { urls: "stun:stun.3cx.com:3478" },
-      { urls: "stun:stun1.l.google.com:19302" },
-      { urls: "stun:stun2.l.google.com:19302" },
-      { urls: "stun:stun3.l.google.com:19302" },
-      { urls: "stun:stun4.l.google.com:19302" },
     ],
   };
+
+  // Helper function to wait for a specified time
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
   const handleOffer = async (offer) => {
     try {
       const pc = peerConnectionRef.current;
-
       if (!pc) return;
 
-      if (pc.signalingState === "stable" || pc.signalingState === "have-remote-offer") {
-        await pc.setRemoteDescription(new RTCSessionDescription(offer));
+      const setRemoteDescriptionWithRetry = async (
+        maxRetries = 5,
+        delay = 1000
+      ) => {
+        for (let i = 0; i < maxRetries; i++) {
+          if (
+            pc.signalingState === "stable" ||
+            pc.signalingState === "have-remote-offer"
+          ) {
+            await pc.setRemoteDescription(new RTCSessionDescription(offer));
+            return true;
+          }
+          // Wait and retry
+          await wait(delay);
+        }
+        throw new Error(
+          "Failed to set remote description: Max retries reached"
+        );
+      };
 
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
+      const success = await setRemoteDescriptionWithRetry();
+      if (!success) return;
 
-        socket.emit("answer", { answer, room });
-      } else {
-        pendingOffers.current.push(offer);
-      }
+      // Create and set the local answer
+      const answer = await pc.createAnswer();
+      await wait(1000); // 1-second delay before setting local description
+      await pc.setLocalDescription(answer);
+
+      // Emit the answer to the signaling server
+      socket.emit("answer", { answer, room });
     } catch (error) {
       console.error("Error handling offer:", error);
     }
@@ -75,70 +91,65 @@ const useVideoChat = (room) => {
         },
       });
 
-      if (localVideoRef.current) localVideoRef.current.srcObject = stream;
+      await wait(1000); // 1-second delay to ensure media devices are ready
+      localVideoRef.current.srcObject = stream;
       localStreamRef.current = stream;
 
-      peerConnectionRef.current = new RTCPeerConnection(iceServers);
+      const pc = new RTCPeerConnection(iceServers);
+      peerConnectionRef.current = pc;
 
-      stream
-        .getTracks()
-        .forEach((track) => peerConnectionRef.current.addTrack(track, stream));
+      stream.getTracks().forEach((track) => pc.addTrack(track, stream));
 
-      peerConnectionRef.current.ontrack = (event) => {
+      pc.ontrack = (event) => {
         if (remoteVideoRef.current)
           remoteVideoRef.current.srcObject = event.streams[0];
       };
 
-      peerConnectionRef.current.onicecandidate = (event) => {
+      pc.onicecandidate = (event) => {
         if (event.candidate) {
           socket.emit("ice-candidate", { candidate: event.candidate, room });
         }
       };
 
-      if (room) {
-        socket.emit("join-room", { room });
-        setInRoom(true);
+      socket.emit("join-room", { room });
+      setInRoom(true);
 
-        socket.on("offer", handleOffer);
-
-        socket.on("answer", async (answer) => {
-          try {
-            const pc = peerConnectionRef.current;
-            if (pc.signalingState === "stable" || pc.signalingState === "have-local-offer") {
-              await pc.setRemoteDescription(new RTCSessionDescription(answer));
-              await processPendingIceCandidates();
-            }
-          } catch (error) {
-            console.error("Error handling answer:", error);
+      socket.on("offer", handleOffer);
+      socket.on("answer", async (answer) => {
+        try {
+          if (pc.signalingState === "have-local-offer") {
+            await wait(1000); // 1-second delay before setting remote description
+            await pc.setRemoteDescription(new RTCSessionDescription(answer));
+            await processPendingIceCandidates();
           }
-        });
+        } catch (error) {
+          console.error("Error handling answer:", error);
+        }
+      });
 
-        socket.on("ice-candidate", async (candidate) => {
-          try {
-            const pc = peerConnectionRef.current;
-            if (pc.remoteDescription) {
-              await pc.addIceCandidate(new RTCIceCandidate(candidate));
-            } else {
-              pendingIceCandidates.current.push(candidate);
-            }
-          } catch (error) {
-            console.error("Error adding ICE candidate:", error);
+      socket.on("ice-candidate", async (candidate) => {
+        try {
+          if (pc.remoteDescription) {
+            await wait(1000); // 1-second delay before adding ICE candidate
+            await pc.addIceCandidate(new RTCIceCandidate(candidate));
+          } else {
+            pendingIceCandidates.current.push(candidate);
           }
-        });
+        } catch (error) {
+          console.error("Error adding ICE candidate:", error);
+        }
+      });
 
-        socket.on("ready", async () => {
-          try {
-            const pc = peerConnectionRef.current;
-            if (!pc) return;
-
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
-            socket.emit("offer", { offer, room });
-          } catch (error) {
-            console.error("Error creating offer:", error);
-          }
-        });
-      }
+      socket.on("ready", async () => {
+        try {
+          await wait(1000); // 1-second delay before creating offer
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          socket.emit("offer", { offer, room });
+        } catch (error) {
+          console.error("Error creating offer:", error);
+        }
+      });
     } catch (error) {
       console.error("Error accessing media devices:", error);
       setMediaError(error.message);
@@ -175,10 +186,10 @@ const useVideoChat = (room) => {
       peerConnectionRef.current.close();
       peerConnectionRef.current = null;
     }
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach((track) => track.stop());
-      localStreamRef.current = null;
-    }
+    // if (localStreamRef.current) {
+    //   localStreamRef.current.getTracks().forEach((track) => track.stop());
+    //   localStreamRef.current = null;
+    // }
     socket.emit("leave-room", { room });
     setInRoom(false);
   };
