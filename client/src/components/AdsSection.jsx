@@ -20,7 +20,7 @@ const AdsSection = () => {
       <hr className="my-6 border-gray-300" />
       <p className="text-base text-gray-700 leading-relaxed">
         {/* All video interactions are monitored. */}
-         Please conduct yourself
+        Please conduct yourself
         <span className="bg-primary-gradient text-transparent bg-clip-text font-bold">
           {" "}
           with respect and responsibility

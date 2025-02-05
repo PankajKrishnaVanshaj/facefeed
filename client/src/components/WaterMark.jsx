@@ -1,6 +1,6 @@
 const WaterMark = () => {
   return (
-    <div className="absolute top-[-6px] left-6 transform -translate-x-1/2 z-10 flex flex-col items-center justify-center p-3 rotate-[-45deg]">
+    <div className="absolute top-[-7px] left-7 transform -translate-x-1/2 z-10 flex flex-col items-center justify-center p-3 rotate-[-45deg]">
       {/* Logo */}
       <div>
         <img

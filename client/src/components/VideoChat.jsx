@@ -34,7 +34,7 @@ const VideoChat = ({ room }) => {
   }
 
   return (
-    <div className="relative flex flex-col h-full py-1">
+    <div className="relative flex flex-col h-full p-0.5">
       <WaterMark />
 
       <VideoStream

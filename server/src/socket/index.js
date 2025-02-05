@@ -2,6 +2,9 @@ import express from "express";
 import http from "http";
 import { Server as SocketIO } from "socket.io";
 import { UserManager } from "../services/User.Manger.js";
+import { rockPaperScissorsHandler } from "./rockPaperScissorsHandler.js";
+import { ticTacToe } from "./ticTacToe.js";
+import { dice } from "./dice.js";
 
 const userManager = new UserManager();
 const app = express();
@@ -10,8 +13,7 @@ const io = new SocketIO(server, {
   cors: {
     origin: [process.env.CLIENT],
     methods: ["GET", "POST"],
-    credentials: true,                      // Allow cookies/credentials
-
+    credentials: true,
   },
 });
 
@@ -22,6 +24,9 @@ const rooms = {}; // In-memory room storage
 io.on("connection", (socket) => {
   // console.log("User connected:", socket.id);
   userManager.addUser(socket);
+  rockPaperScissorsHandler(io, socket, rooms);
+  ticTacToe(io, socket, rooms);
+  dice(io, socket, rooms);
 
   // console.log("Current rooms:", rooms);
 
@@ -70,6 +75,7 @@ io.on("connection", (socket) => {
 
     // Add user to UserManager queue
     try {
+      await userManager.removeUser(socket.id);
       await userManager.addUser(socket);
       // console.log(
       //   `User ${socket.id} added to UserManager queue after leaving room ${room}`
@@ -102,6 +108,10 @@ io.on("connection", (socket) => {
   socket.on("ice-candidate", ({ candidate, room }) => {
     socket.to(room).emit("ice-candidate", candidate);
     // console.log(`ICE candidate sent to room ${room} from user ${socket.id}`);
+  });
+
+  socket.on("change-game", (game, room) => {
+    socket.to(room).emit("game-changed", game); // Emit to all users in the room
   });
 
   socket.on("disconnect", () => {

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useSocket } from "../hooks/SocketProvider";
+import AdsSection from '../components/AdsSection'
 
 const TextChat = ({ room }) => {
   const socket = useSocket();
@@ -55,10 +56,11 @@ const TextChat = ({ room }) => {
   }, [messages]);
 
   return (
-    <div className="flex flex-col h-full justify-between">
+    <div className="flex flex-col h-full justify-between p-1.5">
+      <AdsSection/>
       {/* Chat messages container */}
       <div
-        className="flex-1 p-4 bg-white overflow-auto max-h-[500px] scrollbar-hide"
+        className="flex-1 p-4 bg-white overflow-auto max-h-[200px] scrollbar-hide"
         ref={containRef}
       >
         <div className="flex flex-col gap-2">
