@@ -7,11 +7,12 @@ const useVideoChat = (room) => {
   const remoteVideoRef = useRef(null);
   const peerConnectionRef = useRef(null);
   const localStreamRef = useRef(null);
-  const pendingIceCandidates = useRef([]); // Queue for pending ICE candidates
-  const socketOfferHandler = useRef(null); // useRef for socket event handlers
+  const pendingIceCandidates = useRef([]);
+  const socketOfferHandler = useRef(null);
   const socketAnswerHandler = useRef(null);
   const socketIceCandidateHandler = useRef(null);
   const socketReadyHandler = useRef(null);
+  const socketUserLeftHandler = useRef(null); // Add ref for user-left handler
 
   const [mediaError, setMediaError] = useState(null);
   const [isAudioMuted, setIsAudioMuted] = useState(false);
@@ -24,6 +25,11 @@ const useVideoChat = (room) => {
       { urls: "stun:stun.l.google.com:19302" },
       { urls: "stun:global.stun.twilio.com:3478" },
       { urls: "stun:stun.services.mozilla.com" },
+      {
+        urls: "turn:your_turn_server_address:3478", // Replace with your TURN server URL (or IP:port)
+        username: "your_turn_username", // Replace with your TURN username (if needed)
+        credential: "your_turn_password", // Replace with your TURN password (if needed)
+      },
     ],
   };
 
@@ -38,8 +44,8 @@ const useVideoChat = (room) => {
       console.log(
         "Handling offer, current signaling state:",
         pc.signalingState
-      ); // ADDED LOGGING
-      // console.log("Offer received:", offer); // ADDED LOGGING
+      );
+      // console.log("Offer received:", offer);
 
       const setRemoteDescriptionWithRetry = async (
         maxRetries = 5,
@@ -51,27 +57,27 @@ const useVideoChat = (room) => {
               i + 1
             }/${maxRetries} - Signaling state before setRemoteDescription:`,
             pc.signalingState
-          ); // ADDED LOGGING
+          );
           if (
             pc.signalingState === "stable" ||
             pc.signalingState === "have-remote-offer"
           ) {
             try {
               await pc.setRemoteDescription(new RTCSessionDescription(offer));
-              console.log("setRemoteDescription successful on attempt:", i + 1); // ADDED LOGGING
+              console.log("setRemoteDescription successful on attempt:", i + 1);
               return true;
             } catch (error) {
               console.error(
                 "setRemoteDescription error on attempt:",
                 i + 1,
                 error
-              ); // ADDED LOGGING
+              );
             }
           } else {
             console.warn(
               `Signaling state not suitable for setRemoteDescription, state: ${
                 pc.signalingState
-              }, attempt: ${i + 1}` // ADDED LOGGING
+              }, attempt: ${i + 1}`
             );
           }
           // Wait and retry
@@ -162,7 +168,13 @@ const useVideoChat = (room) => {
   const setupStream = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: true,
+        video: {
+          // Optional: Lower initial resolution for faster start - adjust as needed
+          // width: { ideal: 640 },  // or { max: 640 }
+          // height: { ideal: 480 }, // or { max: 480 }
+          // frameRate: { ideal: 24, max: 30 }, // Optional: limit frame rate
+          aspectRatio: { ideal: 16 / 9 }, // ADD aspect ratio
+        },
         audio: {
           noiseSuppression: true,
           echoCancellation: true,
@@ -356,10 +368,18 @@ const useVideoChat = (room) => {
         }
       };
 
+      const handleUserLeft = (data) => {
+        console.log(`User ${data.userId} left the room: ${data.text}`);
+        // No need to call onRemoteStreamInactive here in useVideoChat anymore.
+        // Parent component now handles remoteStreamActive state based on srcObject changes.
+      };
+      socketUserLeftHandler.current = handleUserLeft;
+
       socket.on("offer", socketOfferHandler.current);
       socket.on("answer", socketAnswerHandler.current);
       socket.on("ice-candidate", socketIceCandidateHandler.current);
       socket.on("ready", socketReadyHandler.current);
+      socket.on("user-left", socketUserLeftHandler.current); // ADDED user-left listener
     } catch (error) {
       console.error("Error accessing media devices:", error);
       setMediaError(error.message);
@@ -376,13 +396,12 @@ const useVideoChat = (room) => {
       // Cleanup function to prevent memory leaks
       if (peerConnectionRef.current) {
         console.log("Closing peer connection");
-        peerConnectionRef.current.ontrack = null; // Remove track event handler
-        peerConnectionRef.current.onicecandidate = null; // Remove ICE candidate handler
-        peerConnectionRef.current.onsignalingstatechange = null; // Remove signaling state handler
-        peerConnectionRef.current.onconnectionstatechange = null; // Remove connection state handler
+        peerConnectionRef.current.ontrack = null;
+        peerConnectionRef.current.onicecandidate = null;
+        peerConnectionRef.current.onsignalingstatechange = null;
+        peerConnectionRef.current.onconnectionstatechange = null;
 
         peerConnectionRef.current.getSenders().forEach((sender) => {
-          // Clean up senders
           if (sender.track) {
             sender.track.enabled = false;
             sender.track.stop();
@@ -390,14 +409,13 @@ const useVideoChat = (room) => {
           }
         });
         peerConnectionRef.current.getReceivers().forEach((receiver) => {
-          // Clean up receivers
           if (receiver.track) {
             receiver.track.enabled = false;
             receiver.track.stop();
           }
         });
-        peerConnectionRef.current.close(); // Close the peer connection
-        peerConnectionRef.current = null; // Dereference the peer connection
+        peerConnectionRef.current.close();
+        peerConnectionRef.current = null;
         console.log("Peer connection closed and dereferenced");
       }
 
@@ -405,14 +423,22 @@ const useVideoChat = (room) => {
         console.log("Stopping local stream tracks");
         localStreamRef.current.getTracks().forEach((track) => {
           track.enabled = false;
-          track.stop(); // Stop each track in the local stream
+          track.stop();
         });
-        localStreamRef.current = null; // Dereference the local stream
-        localVideoRef.current.srcObject = null; // Clear local video element's srcObject
+        localStreamRef.current = null;
+        localVideoRef.current.srcObject = null;
         console.log("Local stream tracks stopped and dereferenced");
       }
-      if (remoteVideoRef.current) {
-        remoteVideoRef.current.srcObject = null; // Clear remote video element's srcObject
+
+      // **SAFER CHECK for remoteVideoRef.current in cleanup**
+      const currentRemoteVideoRef = remoteVideoRef.current;
+      if (currentRemoteVideoRef) {
+        currentRemoteVideoRef.srcObject = null;
+        console.log("Remote video element srcObject cleared");
+      } else {
+        console.log(
+          "Remote video ref was null during cleanup, skipping srcObject clear."
+        );
       }
 
       if (socket) {
@@ -421,10 +447,11 @@ const useVideoChat = (room) => {
         socket.off("answer", socketAnswerHandler.current);
         socket.off("ice-candidate", socketIceCandidateHandler.current);
         socket.off("ready", socketReadyHandler.current);
+        socket.off("user-left", socketUserLeftHandler.current); // Remove user-left listener
         console.log("Socket event listeners removed");
       }
 
-      pendingIceCandidates.current = []; // Clear pending ICE candidates
+      pendingIceCandidates.current = [];
       console.log("Pending ICE candidates cleared");
     };
   }, [room, socket]);
