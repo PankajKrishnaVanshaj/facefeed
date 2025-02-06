@@ -7,7 +7,6 @@ const useVideoChat = (room) => {
   const remoteVideoRef = useRef(null);
   const peerConnectionRef = useRef(null);
   const localStreamRef = useRef(null);
-  const pendingIceCandidates = useRef([]); // Queue for pending ICE candidates
   const [mediaError, setMediaError] = useState(null);
   const [isAudioMuted, setIsAudioMuted] = useState(false);
   const [isMicMuted, setIsMicMuted] = useState(false);
@@ -52,6 +51,34 @@ const useVideoChat = (room) => {
     };
   };
 
+  // Safely set local description
+  const setLocalDescriptionSafely = async (pc, description) => {
+    if (pc.signalingState === "closed") {
+      console.error("Cannot set local description: Peer connection is closed");
+      return;
+    }
+    try {
+      await pc.setLocalDescription(description);
+    } catch (error) {
+      console.error("Error setting local description:", error);
+    }
+  };
+
+  // Safely add ICE candidate
+  const addIceCandidateSafely = async (pc, candidate) => {
+    if (pc.signalingState === "closed" || !pc.remoteDescription) {
+      console.error(
+        "Cannot add ICE candidate: Peer connection is closed or remote description is missing"
+      );
+      return;
+    }
+    try {
+      await pc.addIceCandidate(new RTCIceCandidate(candidate));
+    } catch (error) {
+      console.error("Error adding ICE candidate:", error);
+    }
+  };
+
   // Handle incoming offer
   const handleOffer = async (offer) => {
     try {
@@ -84,28 +111,13 @@ const useVideoChat = (room) => {
       // Create and set the local answer
       const answer = await pc.createAnswer();
       await wait(1000); // 1-second delay before setting local description
-      await pc.setLocalDescription(answer);
+      await setLocalDescriptionSafely(pc, answer);
 
       // Emit the answer to the signaling server
       socket.emit("answer", { answer, room });
     } catch (error) {
       console.error("Error handling offer:", error);
       resetPeerConnection(); // Reset the peer connection on error
-    }
-  };
-
-  // Process pending ICE candidates
-  const processPendingIceCandidates = async () => {
-    const pc = peerConnectionRef.current;
-    if (pc && pc.remoteDescription) {
-      while (pendingIceCandidates.current.length > 0) {
-        const candidate = pendingIceCandidates.current.shift();
-        try {
-          await pc.addIceCandidate(new RTCIceCandidate(candidate));
-        } catch (error) {
-          console.error("Error adding ICE candidate:", error);
-        }
-      }
     }
   };
 
@@ -127,25 +139,10 @@ const useVideoChat = (room) => {
 
       // Initialize the peer connection
       resetPeerConnection();
-
-      const pc = new RTCPeerConnection(iceServers);
-      peerConnectionRef.current = pc;
+      const pc = peerConnectionRef.current;
 
       // Add local tracks to the peer connection
       stream.getTracks().forEach((track) => pc.addTrack(track, stream));
-
-      // Handle incoming tracks
-      pc.ontrack = (event) => {
-        if (remoteVideoRef.current)
-          remoteVideoRef.current.srcObject = event.streams[0];
-      };
-
-      // Handle ICE candidates
-      pc.onicecandidate = (event) => {
-        if (event.candidate) {
-          socket.emit("ice-candidate", { candidate: event.candidate, room });
-        }
-      };
 
       // Join the room and listen for signaling events
       socket.emit("join-room", { room });
@@ -158,7 +155,6 @@ const useVideoChat = (room) => {
           if (pc.signalingState === "have-local-offer") {
             await wait(1000); // 1-second delay before setting remote description
             await pc.setRemoteDescription(new RTCSessionDescription(answer));
-            await processPendingIceCandidates();
           }
         } catch (error) {
           console.error("Error handling answer:", error);
@@ -168,12 +164,7 @@ const useVideoChat = (room) => {
 
       socket.on("ice-candidate", async (candidate) => {
         try {
-          if (pc.remoteDescription) {
-            await wait(1000); // 1-second delay before adding ICE candidate
-            await pc.addIceCandidate(new RTCIceCandidate(candidate));
-          } else {
-            pendingIceCandidates.current.push(candidate);
-          }
+          await addIceCandidateSafely(pc, candidate);
         } catch (error) {
           console.error("Error adding ICE candidate:", error);
         }
@@ -183,7 +174,7 @@ const useVideoChat = (room) => {
         try {
           await wait(1000); // 1-second delay before creating offer
           const offer = await pc.createOffer();
-          await pc.setLocalDescription(offer);
+          await setLocalDescriptionSafely(pc, offer);
           socket.emit("offer", { offer, room });
         } catch (error) {
           console.error("Error creating offer:", error);
@@ -199,7 +190,6 @@ const useVideoChat = (room) => {
   // Cleanup on unmount or room change
   useEffect(() => {
     if (!socket) return;
-
     setupStream();
 
     return () => {
@@ -207,12 +197,10 @@ const useVideoChat = (room) => {
         peerConnectionRef.current.close();
         peerConnectionRef.current = null;
       }
-
       if (localStreamRef.current) {
         localStreamRef.current.getTracks().forEach((track) => track.stop());
         localStreamRef.current = null;
       }
-
       socket.off("offer");
       socket.off("answer");
       socket.off("ice-candidate");
