@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { useSocket } from "./SocketProvider";
+import  { useEffect, useRef, useState, useCallback } from "react";
+import { useSocket } from "./SocketProvider"; // Assuming you have a SocketProvider
 
 const useVideoChat = (room) => {
   const socket = useSocket();
@@ -8,18 +8,15 @@ const useVideoChat = (room) => {
   const peerConnectionRef = useRef(null);
   const localStreamRef = useRef(null);
   const pendingIceCandidates = useRef([]);
-  const socketOfferHandler = useRef(null);
-  const socketAnswerHandler = useRef(null);
-  const socketIceCandidateHandler = useRef(null);
-  const socketReadyHandler = useRef(null);
-  const socketUserLeftHandler = useRef(null); // Add ref for user-left handler
 
   const [mediaError, setMediaError] = useState(null);
   const [isAudioMuted, setIsAudioMuted] = useState(false);
   const [isMicMuted, setIsMicMuted] = useState(false);
   const [isCameraOff, setIsCameraOff] = useState(false);
   const [inRoom, setInRoom] = useState(false);
+  const [callStatus, setCallStatus] = useState("idle"); // "idle", "connecting", "in-call", "ended", "error"
 
+  // **IMPORTANT:** Replace these placeholders with your actual TURN server details in production!
   const iceServers = {
     iceServers: [
       { urls: "stun:stun.l.google.com:19302" },
@@ -33,147 +30,323 @@ const useVideoChat = (room) => {
     ],
   };
 
-  // Helper function to wait for a specified time
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-  const handleOffer = async (offer) => {
-    try {
-      const pc = peerConnectionRef.current;
-      if (!pc) return;
+  // **Memoized Socket Event Handlers using useCallback**
 
-      console.log(
-        "Handling offer, current signaling state:",
-        pc.signalingState
-      );
-      // console.log("Offer received:", offer);
-
-      const setRemoteDescriptionWithRetry = async (
-        maxRetries = 5,
-        delay = 1000
-      ) => {
-        for (let i = 0; i < maxRetries; i++) {
-          console.log(
-            `Attempt ${
-              i + 1
-            }/${maxRetries} - Signaling state before setRemoteDescription:`,
-            pc.signalingState
-          );
-          if (
-            pc.signalingState === "stable" ||
-            pc.signalingState === "have-remote-offer"
-          ) {
-            try {
-              await pc.setRemoteDescription(new RTCSessionDescription(offer));
-              console.log("setRemoteDescription successful on attempt:", i + 1);
-              return true;
-            } catch (error) {
-              console.error(
-                "setRemoteDescription error on attempt:",
-                i + 1,
-                error
-              );
-            }
-          } else {
-            console.warn(
-              `Signaling state not suitable for setRemoteDescription, state: ${
-                pc.signalingState
-              }, attempt: ${i + 1}`
-            );
-          }
-          // Wait and retry
-          await wait(delay);
-          console.warn(
-            `Retrying setRemoteDescription, attempt ${
-              i + 1
-            }/${maxRetries}, state: ${pc.signalingState}`
-          );
-        }
-        throw new Error(
-          `Failed to set remote description after ${maxRetries} retries, state: ${pc.signalingState}`
-        );
-      };
-
-      const setLocalDescriptionWithRetry = async (
-        answer,
-        maxRetries = 5,
-        delay = 1000
-      ) => {
-        for (let i = 0; i < maxRetries; i++) {
-          if (
-            pc.signalingState === "stable" ||
-            pc.signalingState === "have-remote-offer" ||
-            pc.signalingState === "have-local-offer" // Include have-local-offer state
-          ) {
-            await pc.setLocalDescription(answer);
-            return true;
-          }
-          // Wait and retry
-          await wait(delay);
-          console.warn(
-            `Retrying setLocalDescription (answer), attempt ${
-              i + 1
-            }/${maxRetries}, state: ${pc.signalingState}`
-          );
-        }
-        throw new Error(
-          `Failed to set local description (answer) after ${maxRetries} retries, state: ${pc.signalingState}`
-        );
-      };
-
-      const success = await setRemoteDescriptionWithRetry();
-      if (!success) return;
-
-      // Create and set the local answer
-      const answer = await pc.createAnswer();
-
-      let answerSetSuccess = false;
-      try {
-        answerSetSuccess = await setLocalDescriptionWithRetry(answer);
-      } catch (error) {
-        console.error(
-          "Error setting local description (answer) after retries:",
-          error
-        );
-        return; // Exit if setting local description fails even after retries
-      }
-
-      if (!answerSetSuccess) {
-        console.error(
-          "Failed to set local description (answer) even with retry mechanism."
-        );
-        return;
-      }
-
-      // Emit the answer to the signaling server
-      socket.emit("answer", { answer, room });
-    } catch (error) {
-      console.error("Error handling offer:", error);
-    }
-  };
-
-  const processPendingIceCandidates = async () => {
+  const processPendingIceCandidates = useCallback(async () => {
     const pc = peerConnectionRef.current;
     if (pc && pc.remoteDescription) {
       while (pendingIceCandidates.current.length > 0) {
         const candidate = pendingIceCandidates.current.shift();
         try {
           await pc.addIceCandidate(new RTCIceCandidate(candidate));
+          console.log(
+            "processPendingIceCandidates - Pending ICE candidate added"
+          );
         } catch (error) {
-          console.error("Error adding ICE candidate:", error);
+          console.error(
+            "processPendingIceCandidates - Error adding pending ICE candidate:",
+            error
+          );
         }
       }
     }
-  };
+  }, []);
 
-  const setupStream = async () => {
+  const handleOffer = useCallback(
+    async (offer) => {
+      // console.log("handleOffer - Received offer:", offer);
+      if (!peerConnectionRef.current) {
+        console.warn("handleOffer - Peer connection is null, ignoring offer.");
+        return;
+      }
+      const pc = peerConnectionRef.current;
+
+      try {
+        setCallStatus("connecting"); // Update call status
+
+        // Retry logic for setRemoteDescription
+        const setRemoteDescriptionWithRetry = async (
+          maxRetries = 5,
+          delay = 1000
+        ) => {
+          for (let i = 0; i < maxRetries; i++) {
+            if (
+              pc.signalingState === "stable" ||
+              pc.signalingState === "have-remote-offer"
+            ) {
+              try {
+                await pc.setRemoteDescription(new RTCSessionDescription(offer));
+                console.log(
+                  "handleOffer - setRemoteDescription success on attempt:",
+                  i + 1
+                );
+                return true;
+              } catch (error) {
+                console.error(
+                  "handleOffer - setRemoteDescription error on attempt:",
+                  i + 1,
+                  error
+                );
+              }
+            } else {
+              console.warn(
+                `handleOffer - Signaling state not suitable for setRemoteDescription, state: ${
+                  pc.signalingState
+                }, attempt: ${i + 1}`
+              );
+            }
+            await wait(delay);
+          }
+          throw new Error(
+            `handleOffer - Failed setRemoteDescription after retries, state: ${pc.signalingState}`
+          );
+        };
+
+        // Retry logic for setLocalDescription (answer)
+        const setLocalDescriptionWithRetry = async (
+          answer,
+          maxRetries = 5,
+          delay = 1000
+        ) => {
+          for (let i = 0; i < maxRetries; i++) {
+            if (
+              pc.signalingState === "stable" ||
+              pc.signalingState === "have-remote-offer" ||
+              pc.signalingState === "have-local-offer"
+            ) {
+              try {
+                await pc.setLocalDescription(answer);
+                console.log(
+                  "handleOffer - setLocalDescription (answer) success on attempt:",
+                  i + 1
+                );
+                return true;
+              } catch (error) {
+                console.error(
+                  "handleOffer - setLocalDescription (answer) error on attempt:",
+                  i + 1,
+                  error
+                );
+              }
+            } else {
+              console.warn(
+                `handleOffer - Signaling state not suitable for setLocalDescription (answer), state: ${
+                  pc.signalingState
+                }, attempt: ${i + 1}`
+              );
+            }
+            await wait(delay);
+          }
+          throw new Error(
+            `handleOffer - Failed setLocalDescription (answer) after retries, state: ${pc.signalingState}`
+          );
+        };
+
+        const remoteDescriptionSuccess = await setRemoteDescriptionWithRetry();
+        if (!remoteDescriptionSuccess) return;
+
+        const answer = await pc.createAnswer();
+        const localDescriptionSuccess = await setLocalDescriptionWithRetry(
+          answer
+        );
+        if (!localDescriptionSuccess) return;
+
+        socket.emit("answer", { answer, room });
+        // console.log("handleOffer - Answer sent to server:", answer);
+      } catch (error) {
+        console.error("handleOffer - Error handling offer:", error);
+        setCallStatus("error"); // Update call status to error
+      }
+    },
+    [room, socket, setCallStatus]
+  );
+
+  const socketAnswerHandler = useCallback(
+    async (answer) => {
+      // console.log("socketAnswerHandler - Received answer:", answer);
+      if (!peerConnectionRef.current) {
+        console.warn(
+          "socketAnswerHandler - Peer connection is null, ignoring answer."
+        );
+        return;
+      }
+      const pc = peerConnectionRef.current;
+
+      try {
+        setCallStatus("connecting"); // Update call status
+
+        // Retry logic for setRemoteDescription (answer handler)
+        const setRemoteDescriptionForAnswerWithRetry = async (
+          answerPayload,
+          maxRetries = 5,
+          delay = 1000
+        ) => {
+          for (let i = 0; i < maxRetries; i++) {
+            if (
+              pc.signalingState === "stable" ||
+              pc.signalingState === "have-local-offer"
+            ) {
+              try {
+                await pc.setRemoteDescription(
+                  new RTCSessionDescription(answerPayload)
+                );
+                console.log(
+                  "socketAnswerHandler - setRemoteDescription success on attempt:",
+                  i + 1
+                );
+                return true;
+              } catch (error) {
+                console.error(
+                  "socketAnswerHandler - setRemoteDescription error on attempt:",
+                  i + 1,
+                  error
+                );
+              }
+            } else {
+              console.warn(
+                `socketAnswerHandler - Signaling state not suitable for setRemoteDescription, state: ${
+                  pc.signalingState
+                }, attempt: ${i + 1}`
+              );
+            }
+            await wait(delay);
+          }
+          throw new Error(
+            `socketAnswerHandler - Failed setRemoteDescription after retries, state: ${pc.signalingState}`
+          );
+        };
+
+        const remoteDescriptionSetSuccess =
+          await setRemoteDescriptionForAnswerWithRetry(answer);
+        if (!remoteDescriptionSetSuccess) return;
+
+        await processPendingIceCandidates();
+        setCallStatus("in-call"); // Update call status to in-call on successful answer processing
+      } catch (error) {
+        console.error("socketAnswerHandler - Error handling answer:", error);
+        setCallStatus("error"); // Update call status to error
+      }
+    },
+    [processPendingIceCandidates, setCallStatus]
+  );
+
+  const socketIceCandidateHandler = useCallback(async (candidate) => {
+    if (!peerConnectionRef.current) {
+      console.warn(
+        "socketIceCandidateHandler - Peer connection is null, ignoring ICE candidate."
+      );
+      return;
+    }
+    const pc = peerConnectionRef.current;
+
+    try {
+      if (pc.remoteDescription) {
+        try {
+          await pc.addIceCandidate(new RTCIceCandidate(candidate));
+          console.log(
+            "socketIceCandidateHandler - ICE candidate added successfully"
+          );
+        } catch (error) {
+          console.error(
+            "socketIceCandidateHandler - Error adding ICE candidate:",
+            error
+          );
+        }
+      } else {
+        pendingIceCandidates.current.push(candidate);
+        console.log(
+          "socketIceCandidateHandler - Pending ICE candidate added to queue."
+        );
+      }
+    } catch (error) {
+      console.error(
+        "socketIceCandidateHandler - Error handling ice-candidate:",
+        error
+      );
+    }
+  }, []);
+
+  const socketReadyHandler = useCallback(async () => {
+    console.log("socketReadyHandler - Received 'ready' event from server.");
+    if (!peerConnectionRef.current) {
+      console.warn(
+        "socketReadyHandler - Peer connection is null, ignoring 'ready' event."
+      );
+      return;
+    }
+    const pc = peerConnectionRef.current;
+
+    try {
+      // Logic for offer initiation - you might need to adjust this based on your server-side logic
+      const shouldInitiateOffer = true; // Assuming this client always initiates for simplicity
+
+      if (shouldInitiateOffer) {
+        // Retry logic for setLocalDescription (offer)
+        const setLocalDescriptionForOfferWithRetry = async (
+          offerPayload,
+          maxRetries = 5,
+          delay = 1000
+        ) => {
+          for (let i = 0; i < maxRetries; i++) {
+            if (pc.signalingState === "stable") {
+              try {
+                await pc.setLocalDescription(offerPayload);
+                console.log(
+                  "socketReadyHandler - setLocalDescription (offer) success on attempt:",
+                  i + 1
+                );
+                return true;
+              } catch (error) {
+                console.error(
+                  "socketReadyHandler - setLocalDescription (offer) error on attempt:",
+                  i + 1,
+                  error
+                );
+              }
+            } else {
+              console.warn(
+                `socketReadyHandler - Signaling state not stable for setLocalDescription (offer), state: ${
+                  pc.signalingState
+                }, attempt: ${i + 1}`
+              );
+            }
+            await wait(delay);
+          }
+          throw new Error(
+            `socketReadyHandler - Failed setLocalDescription (offer) after retries, state: ${pc.signalingState}`
+          );
+        };
+
+        const offer = await pc.createOffer();
+        const offerSetSuccess = await setLocalDescriptionForOfferWithRetry(
+          offer
+        );
+        if (!offerSetSuccess) return;
+
+        socket.emit("offer", { offer, room });
+        // console.log("socketReadyHandler - Offer sent to server:", offer);
+        setCallStatus("connecting"); // Update call status
+      } else {
+        console.log(
+          "socketReadyHandler - Not initiating offer, waiting for offer from other peer."
+        );
+      }
+    } catch (error) {
+      console.error("socketReadyHandler - Error creating offer:", error);
+      setCallStatus("error"); // Update call status to error
+    }
+  }, [room, socket, setCallStatus]);
+
+  const setupStream = useCallback(async () => {
+    // console.log("setupStream - Starting stream setup for room:", room);
+    setCallStatus("connecting"); // Update call status to connecting
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
-          // Optional: Lower initial resolution for faster start - adjust as needed
-          // width: { ideal: 640 },  // or { max: 640 }
-          // height: { ideal: 480 }, // or { max: 480 }
-          // frameRate: { ideal: 24, max: 30 }, // Optional: limit frame rate
-          aspectRatio: { ideal: 16 / 9 }, // ADD aspect ratio
+          aspectRatio: { ideal: 16 / 9 },
         },
         audio: {
           noiseSuppression: true,
@@ -182,7 +355,7 @@ const useVideoChat = (room) => {
         },
       });
 
-      await wait(1000); // 1-second delay to ensure media devices are ready
+      await wait(1000); // Wait for media devices to be ready
       localVideoRef.current.srcObject = stream;
       localStreamRef.current = stream;
 
@@ -192,210 +365,90 @@ const useVideoChat = (room) => {
       stream.getTracks().forEach((track) => pc.addTrack(track, stream));
 
       pc.ontrack = (event) => {
-        if (remoteVideoRef.current)
+        if (remoteVideoRef.current) {
           remoteVideoRef.current.srcObject = event.streams[0];
+          setCallStatus("in-call"); // Update call status to in-call when remote stream starts
+        }
       };
 
       pc.onicecandidate = (event) => {
         if (event.candidate) {
           socket.emit("ice-candidate", { candidate: event.candidate, room });
+          // console.log(
+          //   "setupStream - ICE candidate emitted to server:",
+          //   event.candidate
+          // );
         }
       };
 
       pc.onsignalingstatechange = () => {
-        console.log("Signaling state change:", pc.signalingState);
+        console.log("setupStream - Signaling state change:", pc.signalingState);
       };
 
       pc.onconnectionstatechange = () => {
-        console.log("Connection state change:", pc.connectionState);
+        console.log(
+          "setupStream - Connection state change:",
+          pc.connectionState
+        );
         if (
           pc.connectionState === "failed" ||
           pc.connectionState === "disconnected" ||
           pc.connectionState === "closed"
         ) {
           console.warn(
-            "Peer connection state is not healthy:",
+            "setupStream - Peer connection state is not healthy:",
             pc.connectionState
           );
-          // Optionally handle reconnection or display an error to the user
+          setCallStatus("error"); // Update call status to error
+          // Consider adding reconnection logic or UI feedback here.
+        } else if (pc.connectionState === "connected") {
+          setCallStatus("in-call"); // Ensure call status is "in-call" when fully connected
         }
       };
 
       socket.emit("join-room", { room });
       setInRoom(true);
+      setMediaError(null); // Clear any previous media errors if setup is successful
 
-      // Store socket event handlers in useRef
-      socketOfferHandler.current = handleOffer;
-      socketAnswerHandler.current = async (answer) => {
-        try {
-          const pc = peerConnectionRef.current;
-          if (!pc) return;
+      // Attach socket event listeners using memoized handlers
+      socket.on("offer", handleOffer);
+      socket.on("answer", socketAnswerHandler);
+      socket.on("ice-candidate", socketIceCandidateHandler);
+      socket.on("ready", socketReadyHandler);
 
-          const setRemoteDescriptionForAnswerWithRetry = async (
-            answerPayload,
-            maxRetries = 5,
-            delay = 1000
-          ) => {
-            for (let i = 0; i < maxRetries; i++) {
-              if (
-                pc.signalingState === "stable" ||
-                pc.signalingState === "have-local-offer"
-              ) {
-                await pc.setRemoteDescription(
-                  new RTCSessionDescription(answerPayload)
-                );
-                return true;
-              }
-              // Wait and retry
-              await wait(delay);
-              console.warn(
-                `Retrying setRemoteDescription (answer handler), attempt ${
-                  i + 1
-                }/${maxRetries}, state: ${pc.signalingState}`
-              );
-            }
-            throw new Error(
-              `Failed to set remote description (answer handler) after ${maxRetries} retries, state: ${pc.signalingState}`
-            );
-          };
-
-          let remoteDescriptionSetSuccess = false;
-          try {
-            remoteDescriptionSetSuccess =
-              await setRemoteDescriptionForAnswerWithRetry(answer);
-          } catch (error) {
-            console.error(
-              "Error setting remote description (answer handler) after retries:",
-              error
-            );
-            return; // Exit if setting remote description fails even after retries
-          }
-
-          if (!remoteDescriptionSetSuccess) {
-            console.error(
-              "Failed to set remote description (answer handler) even with retry mechanism."
-            );
-            return;
-          }
-          await processPendingIceCandidates();
-        } catch (error) {
-          console.error("Error handling answer:", error);
-        }
-      };
-      socketIceCandidateHandler.current = async (candidate) => {
-        try {
-          const pc = peerConnectionRef.current;
-          if (!pc) return;
-          if (pc.remoteDescription) {
-            try {
-              await pc.addIceCandidate(new RTCIceCandidate(candidate));
-            } catch (error) {
-              console.error("Error adding ICE candidate:", error);
-            }
-          } else {
-            pendingIceCandidates.current.push(candidate);
-          }
-        } catch (error) {
-          console.error("Error handling ice-candidate:", error);
-        }
-      };
-      socketReadyHandler.current = async () => {
-        try {
-          const pc = peerConnectionRef.current;
-          if (!pc) return;
-
-          // **Simple Client-Side Check - May need server-side logic for robustness**
-          // Let's assume if we are the *first* to receive "ready", we initiate the offer.
-          // This is a simplification and might not be foolproof in all scenarios.
-          const shouldInitiateOffer = true; // For now, assume this client always initiates.
-          // In a real app, you'd need a better way to determine this.
-
-          if (shouldInitiateOffer) {
-            // ADD THIS CONDITIONAL CHECK
-            const setLocalDescriptionForOfferWithRetry = async (
-              offerPayload,
-              maxRetries = 5,
-              delay = 1000
-            ) => {
-              for (let i = 0; i < maxRetries; i++) {
-                if (pc.signalingState === "stable") {
-                  await pc.setLocalDescription(offerPayload);
-                  return true;
-                }
-                // Wait and retry
-                await wait(delay);
-                console.warn(
-                  `Retrying setLocalDescription (offer), attempt ${
-                    i + 1
-                  }/${maxRetries}, state: ${pc.signalingState}`
-                );
-              }
-              throw new Error(
-                `Failed to set local description (offer) after ${maxRetries} retries, state: ${pc.signalingState}`
-              );
-            };
-
-            const offer = await pc.createOffer();
-
-            let offerSetSuccess = false;
-            try {
-              offerSetSuccess = await setLocalDescriptionForOfferWithRetry(
-                offer
-              );
-            } catch (error) {
-              console.error(
-                "Error setting local description (offer) after retries:",
-                error
-              );
-              return; // Exit if setting local description fails even after retries
-            }
-
-            if (!offerSetSuccess) {
-              console.error(
-                "Failed to set local description (offer) even with retry mechanism."
-              );
-              return;
-            }
-            socket.emit("offer", { offer, room });
-          } else {
-            console.log(
-              "Not initiating offer, waiting for offer from other peer."
-            ); // ADDED LOGGING
-            // If not initiating, we simply wait for the 'offer' event from the other peer.
-          }
-        } catch (error) {
-          console.error("Error creating offer:", error);
-        }
-      };
-
-      const handleUserLeft = (data) => {
-        console.log(`User ${data.userId} left the room: ${data.text}`);
-        // No need to call onRemoteStreamInactive here in useVideoChat anymore.
-        // Parent component now handles remoteStreamActive state based on srcObject changes.
-      };
-      socketUserLeftHandler.current = handleUserLeft;
-
-      socket.on("offer", socketOfferHandler.current);
-      socket.on("answer", socketAnswerHandler.current);
-      socket.on("ice-candidate", socketIceCandidateHandler.current);
-      socket.on("ready", socketReadyHandler.current);
-      socket.on("user-left", socketUserLeftHandler.current); // ADDED user-left listener
+      console.log("setupStream - Socket event listeners attached.");
     } catch (error) {
-      console.error("Error accessing media devices:", error);
+      console.error("setupStream - Error accessing media devices:", error);
       setMediaError(error.message);
+      setCallStatus("error"); // Update call status to error
     }
-  };
+  }, [
+    room,
+    socket,
+    handleOffer,
+    socketAnswerHandler,
+    socketIceCandidateHandler,
+    socketReadyHandler,
+    setCallStatus,
+  ]);
 
   useEffect(() => {
-    if (!socket) return;
+    if (!socket || !room) return; // Ensure socket and room are available
 
-    setupStream();
+    // console.log(
+    //   "useEffect - Room changed or socket updated, setting up stream for room:",
+    //   room
+    // );
+    setCallStatus("idle"); // Reset call status when room changes
+
+    setupStream(); // Call setupStream when room changes or socket is available
 
     return () => {
-      console.log("Cleanup useEffect triggered");
-      // Cleanup function to prevent memory leaks
+      // console.log("useEffect Cleanup - Room:", room);
+      setCallStatus("ended"); // Update call status to ended during cleanup
+
       if (peerConnectionRef.current) {
-        console.log("Closing peer connection");
+        console.log("useEffect Cleanup - Closing peer connection");
         peerConnectionRef.current.ontrack = null;
         peerConnectionRef.current.onicecandidate = null;
         peerConnectionRef.current.onsignalingstatechange = null;
@@ -416,59 +469,68 @@ const useVideoChat = (room) => {
         });
         peerConnectionRef.current.close();
         peerConnectionRef.current = null;
-        console.log("Peer connection closed and dereferenced");
+        console.log(
+          "useEffect Cleanup - Peer connection closed and dereferenced"
+        );
       }
 
       if (localStreamRef.current) {
-        console.log("Stopping local stream tracks");
+        console.log("useEffect Cleanup - Stopping local stream tracks");
         localStreamRef.current.getTracks().forEach((track) => {
           track.enabled = false;
           track.stop();
         });
         localStreamRef.current = null;
         localVideoRef.current.srcObject = null;
-        console.log("Local stream tracks stopped and dereferenced");
+        console.log(
+          "useEffect Cleanup - Local stream tracks stopped and dereferenced"
+        );
       }
 
-      // **SAFER CHECK for remoteVideoRef.current in cleanup**
-      const currentRemoteVideoRef = remoteVideoRef.current;
-      if (currentRemoteVideoRef) {
-        currentRemoteVideoRef.srcObject = null;
-        console.log("Remote video element srcObject cleared");
-      } else {
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = null;
         console.log(
-          "Remote video ref was null during cleanup, skipping srcObject clear."
+          "useEffect Cleanup - Remote video element srcObject cleared"
         );
       }
 
       if (socket) {
-        console.log("Removing socket event listeners");
-        socket.off("offer", socketOfferHandler.current);
-        socket.off("answer", socketAnswerHandler.current);
-        socket.off("ice-candidate", socketIceCandidateHandler.current);
-        socket.off("ready", socketReadyHandler.current);
-        socket.off("user-left", socketUserLeftHandler.current); // Remove user-left listener
-        console.log("Socket event listeners removed");
+        console.log("useEffect Cleanup - Removing socket event listeners");
+        socket.off("offer", handleOffer);
+        socket.off("answer", socketAnswerHandler);
+        socket.off("ice-candidate", socketIceCandidateHandler);
+        socket.off("ready", socketReadyHandler);
+        console.log("useEffect Cleanup - Socket event listeners removed");
       }
 
       pendingIceCandidates.current = [];
-      console.log("Pending ICE candidates cleared");
+      console.log("useEffect Cleanup - Pending ICE candidates cleared");
+      setInRoom(false); // Ensure inRoom is set to false on cleanup
     };
-  }, [room, socket]);
+  }, [
+    room,
+    socket,
+    setupStream,
+    handleOffer,
+    socketAnswerHandler,
+    socketIceCandidateHandler,
+    socketReadyHandler,
+  ]); // Dependencies include memoized handlers and setupStream
 
-  const endCall = () => {
-    console.log("End call function triggered");
+  const endCall = useCallback(() => {
+    console.log("endCall - Function triggered");
+    setCallStatus("ended"); // Update call status to ended
     setIsCameraOff(false);
     setIsMicMuted(false);
     setIsAudioMuted(false);
 
     if (peerConnectionRef.current) {
-      console.log("Closing peer connection in endCall");
+      console.log("endCall - Closing peer connection");
       peerConnectionRef.current.close();
       peerConnectionRef.current = null;
     }
     if (localStreamRef.current) {
-      console.log("Stopping local stream in endCall");
+      console.log("endCall - Stopping local stream");
       localStreamRef.current.getTracks().forEach((track) => track.stop());
       localStreamRef.current = null;
     }
@@ -481,26 +543,26 @@ const useVideoChat = (room) => {
 
     socket.emit("leave-room", { room });
     setInRoom(false);
-    console.log("End call function completed");
-  };
+    console.log("endCall - Function completed");
+  }, [room, socket]);
 
-  const toggleAudio = () => setIsAudioMuted((prev) => !prev);
+  const toggleAudio = useCallback(() => setIsAudioMuted((prev) => !prev), []);
 
-  const toggleCamera = () => {
+  const toggleCamera = useCallback(() => {
     const videoTrack = localStreamRef.current?.getVideoTracks()[0];
     if (videoTrack) {
       videoTrack.enabled = !videoTrack.enabled;
       setIsCameraOff((prev) => !prev);
     }
-  };
+  }, []);
 
-  const toggleMic = () => {
+  const toggleMic = useCallback(() => {
     const audioTrack = localStreamRef.current?.getAudioTracks()[0];
     if (audioTrack) {
       audioTrack.enabled = !audioTrack.enabled;
       setIsMicMuted((prev) => !prev);
     }
-  };
+  }, []);
 
   return {
     localVideoRef,
@@ -510,6 +572,7 @@ const useVideoChat = (room) => {
     isCameraOff,
     inRoom,
     mediaError,
+    callStatus, // Expose callStatus to the component
     endCall,
     toggleAudio,
     toggleMic,
