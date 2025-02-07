@@ -80,7 +80,19 @@ const useVideoChat = (room) => {
     // console.log("handleOffer: Received offer", offer);
     try {
       const pc = peerConnectionRef.current;
-      if (!pc) return;
+      if (!pc) {
+        console.warn("handleOffer: PeerConnection is null, exiting");
+        return;
+      }
+
+      // Ensure the signaling state is stable before setting the remote description
+      if (pc.signalingState !== "stable") {
+        console.error(
+          "handleOffer: Cannot set remote description in signaling state:",
+          pc.signalingState
+        );
+        return;
+      }
 
       await pc.setRemoteDescription(new RTCSessionDescription(offer));
       const answer = await pc.createAnswer();
@@ -148,6 +160,15 @@ const useVideoChat = (room) => {
           try {
             const pc = peerConnectionRef.current;
             if (!pc) return;
+
+            // Ensure the signaling state is have-remote-offer before setting the remote description
+            if (pc.signalingState !== "have-remote-offer") {
+              console.error(
+                "answer: Cannot set remote description in signaling state:",
+                pc.signalingState
+              );
+              return;
+            }
 
             await pc.setRemoteDescription(new RTCSessionDescription(answer));
             await processPendingIceCandidates();
