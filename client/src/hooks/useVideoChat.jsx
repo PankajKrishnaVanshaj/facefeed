@@ -14,7 +14,7 @@ const useVideoChat = (room) => {
   const [isMicMuted, setIsMicMuted] = useState(false);
   const [isCameraOff, setIsCameraOff] = useState(false);
   const [inRoom, setInRoom] = useState(false);
-  const [connectionState, setConnectionState] = useState("disconnected"); // Added connectionState
+  const [connectionState, setConnectionState] = useState("disconnected");
 
   const iceServers = {
     iceServers: [
@@ -29,37 +29,83 @@ const useVideoChat = (room) => {
     ],
   };
   const handleOffer = async (offer) => {
+    console.log("handleOffer: Received offer", offer);
     try {
       const pc = peerConnectionRef.current;
-      if (!pc) return;
-
+      if (!pc) {
+        console.warn("handleOffer: peerConnection is null, exiting");
+        return;
+      }
+      console.log(
+        "handleOffer: current signalingState before setRemoteDescription (offer):",
+        pc.signalingState
+      );
       await pc.setRemoteDescription(new RTCSessionDescription(offer));
+      console.log(
+        "handleOffer: signalingState after setRemoteDescription (offer):",
+        pc.signalingState
+      );
+
       const answer = await pc.createAnswer();
+      console.log("handleOffer: Created answer", answer);
+      console.log(
+        "handleOffer: current signalingState before setLocalDescription (answer):",
+        pc.signalingState
+      );
       await pc.setLocalDescription(answer);
+      console.log(
+        "handleOffer: signalingState after setLocalDescription (answer):",
+        pc.signalingState
+      );
 
       socket.emit("answer", { answer, room });
+      console.log("handleOffer: Emitted answer to server");
     } catch (error) {
-      console.error("Error handling offer:", error);
-      setConnectionState("error"); // Set connectionState to error
+      console.error("handleOffer: Error handling offer:", error);
+      setConnectionState("error");
     }
   };
 
   const processPendingIceCandidates = async () => {
+    console.log(
+      "processPendingIceCandidates: Start processing pending ICE candidates"
+    );
     const pc = peerConnectionRef.current;
     if (pc && pc.remoteDescription) {
+      console.log(
+        "processPendingIceCandidates: remoteDescription is set, processing candidates. Pending candidates count:",
+        pendingIceCandidates.current.length
+      );
       while (pendingIceCandidates.current.length > 0) {
         const candidate = pendingIceCandidates.current.shift();
         try {
+          console.log(
+            "processPendingIceCandidates: Adding ICE candidate",
+            candidate
+          );
           await pc.addIceCandidate(new RTCIceCandidate(candidate));
+          console.log(
+            "processPendingIceCandidates: ICE candidate added successfully"
+          );
         } catch (error) {
-          console.error("Error adding ICE candidate:", error);
-          setConnectionState("error"); // Set connectionState to error
+          console.error(
+            "processPendingIceCandidates: Error adding ICE candidate:",
+            error
+          );
+          setConnectionState("error");
         }
       }
+      console.log(
+        "processPendingIceCandidates: Finished processing pending ICE candidates"
+      );
+    } else {
+      console.log(
+        "processPendingIceCandidates: remoteDescription is not yet set, waiting for it."
+      );
     }
   };
   const setupStream = async () => {
-    setConnectionState("connecting"); // Set connectionState to connecting
+    setConnectionState("connecting");
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: true,
@@ -94,44 +140,82 @@ const useVideoChat = (room) => {
         setInRoom(true);
         socket.on("offer", handleOffer);
         socket.on("answer", async (answer) => {
+          console.log("answer: Received answer", answer);
           try {
             const pc = peerConnectionRef.current;
+            if (!pc) {
+              console.warn("answer: peerConnection is null, exiting");
+              return;
+            }
+            console.log(
+              "answer: current signalingState before setRemoteDescription (answer):",
+              pc.signalingState
+            );
             await pc.setRemoteDescription(new RTCSessionDescription(answer));
+            console.log(
+              "answer: signalingState after setRemoteDescription (answer):",
+              pc.signalingState
+            );
             await processPendingIceCandidates();
           } catch (error) {
-            console.error("Error handling answer:", error);
-            setConnectionState("error"); // Set connectionState to error
+            console.error("answer: Error handling answer:", error);
+            setConnectionState("error");
           }
         });
         socket.on("ice-candidate", async (candidate) => {
           try {
             const pc = peerConnectionRef.current;
             if (pc.remoteDescription) {
+              console.log(
+                "ice-candidate: remoteDescription is set, adding candidate immediately",
+                candidate
+              );
               await pc.addIceCandidate(new RTCIceCandidate(candidate));
             } else {
+              console.log(
+                "ice-candidate: remoteDescription is not set, pushing candidate to pending",
+                candidate
+              );
               pendingIceCandidates.current.push(candidate);
             }
           } catch (error) {
-            console.error("Error adding ICE candidate:", error);
-            setConnectionState("error"); // Set connectionState to error
+            console.error("ice-candidate: Error adding ICE candidate:", error);
+            setConnectionState("error");
           }
         });
         socket.on("ready", async () => {
-          setConnectionState("connecting"); // Set connectionState to connecting on 'ready'
+          console.log("ready: Received ready signal");
+          setConnectionState("connecting");
           try {
             const pc = peerConnectionRef.current;
-            if (!pc) return;
+            if (!pc) {
+              console.warn("ready: peerConnection is null, exiting");
+              return;
+            }
+            console.log(
+              "ready: current signalingState before createOffer:",
+              pc.signalingState
+            );
             const offer = await pc.createOffer();
+            console.log("ready: Created offer", offer);
+            console.log(
+              "ready: current signalingState before setLocalDescription (offer):",
+              pc.signalingState
+            );
             await pc.setLocalDescription(offer);
+            console.log(
+              "ready: signalingState after setLocalDescription (offer):",
+              pc.signalingState
+            );
             socket.emit("offer", { offer, room });
+            console.log("ready: Emitted offer to server");
           } catch (error) {
-            console.error("Error creating offer:", error);
-            setConnectionState("error"); // Set connectionState to error
+            console.error("ready: Error creating offer:", error);
+            setConnectionState("error");
           }
         });
-        socket.on("hang-up", () => {
-          // Handle hang-up event
-          console.log("Received hang-up signal");
+        socket.on("leave-room", () => {
+          console.log("leave-room: Received leave-room signal");
           if (peerConnectionRef.current) {
             peerConnectionRef.current.close();
             peerConnectionRef.current = null;
@@ -145,9 +229,9 @@ const useVideoChat = (room) => {
         });
       }
     } catch (error) {
-      console.error("Error accessing media devices:", error);
+      console.error("setupStream: Error accessing media devices:", error);
       setMediaError(error.message);
-      setConnectionState("error"); // Set connectionState to error
+      setConnectionState("error");
     }
   };
 
@@ -169,12 +253,12 @@ const useVideoChat = (room) => {
       socket.off("answer");
       socket.off("ice-candidate");
       socket.off("ready");
-      socket.off("hang-up"); // Off hang-up event listener
+      socket.off("leave-room"); // важно отписать и от leave-room
     };
   }, [room, socket]);
 
   const endCall = () => {
-    setConnectionState("disconnecting"); // Set connectionState to disconnecting
+    setConnectionState("disconnecting");
     setIsCameraOff(false);
     setIsMicMuted(false);
     setIsAudioMuted(false);
@@ -187,10 +271,9 @@ const useVideoChat = (room) => {
       localStreamRef.current.getTracks().forEach((track) => track.stop());
       localStreamRef.current = null;
     }
-    socket.emit("hang-up", { room }); // Emit hang-up event
     socket.emit("leave-room", { room });
     setInRoom(false);
-    setConnectionState("disconnected"); // Set connectionState to disconnected
+    setConnectionState("disconnected");
   };
 
   const toggleAudio = () => setIsAudioMuted((prev) => !prev);
@@ -222,7 +305,7 @@ const useVideoChat = (room) => {
     toggleAudio,
     toggleMic,
     toggleCamera,
-    connectionState, // Return connectionState to be used in UI
+    connectionState,
   };
 };
 

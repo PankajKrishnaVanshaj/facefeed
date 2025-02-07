@@ -35,44 +35,52 @@ io.on("connection", (socket) => {
       // console.error("No room specified");
       return;
     }
-
+  
+    // Join the room
     socket.join(room);
+  
+    // Add the user to the room in memory
     rooms[room] = rooms[room] || [];
     if (!rooms[room].includes(socket.id)) {
       rooms[room].push(socket.id);
     }
-
+  
+    // Log the updated rooms and users in the room
     // console.log(`User ${socket.id} joined room ${room}`);
     // console.log("Updated rooms:", rooms);
-
+    // console.log(`Users in room ${room}:`, rooms[room]);
+  
+    // Notify other users in the room
     socket.to(room).emit("ready");
   });
 
   socket.on("leave-room", async ({ room }) => {
     if (!room) {
-      // console.error("No room specified");
+      console.error("No room specified");
       return;
     }
-
+  
     // Leave the room
     socket.leave(room);
-
+  
     // Update the room's user list
     if (rooms[room]) {
-      rooms[room] = rooms[room].filter((id) => id !== socket.id);
+      rooms[room] = rooms[room].filter((id) => id !== socket.id);  // Remove socket.id from the room
       if (rooms[room].length === 0) {
-        delete rooms[room]; // Remove empty room
+        delete rooms[room];  // Remove empty room
       }
     }
-
+  
+    // Log the updated rooms and users in the room
     // console.log(`User ${socket.id} left room ${room}`);
     // console.log("Updated rooms:", rooms);
-
+    // console.log(`Users in room ${room}:`, rooms[room] || "Room is empty");
+  
     // Notify other users in the room
     socket
       .to(room)
       .emit("message", { userId: socket.id, text: "User left the chat room" });
-
+  
     // Add user to UserManager queue
     try {
       await userManager.removeUser(socket.id);
