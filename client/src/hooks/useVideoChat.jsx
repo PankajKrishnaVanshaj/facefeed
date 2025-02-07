@@ -34,50 +34,10 @@ const useVideoChat = (room) => {
   };
 
   /**
-   * Initializes the RTCPeerConnection and sets up event listeners.
-   */
-  const initializePeerConnection = () => {
-    const pc = new RTCPeerConnection(iceServers);
-    peerConnectionRef.current = pc;
-
-    // Handle incoming tracks (remote video/audio)
-    pc.ontrack = (event) => {
-      if (remoteVideoRef.current)
-        remoteVideoRef.current.srcObject = event.streams[0];
-    };
-
-    // Handle ICE candidates
-    pc.onicecandidate = (event) => {
-      if (event.candidate) {
-        socket.emit("ice-candidate", { candidate: event.candidate, room });
-      }
-    };
-
-    // Handle ICE connection state changes
-    pc.oniceconnectionstatechange = () => {
-      console.log("ICE connection state:", pc.iceConnectionState);
-      if (
-        pc.iceConnectionState === "failed" ||
-        pc.iceConnectionState === "disconnected"
-      ) {
-        setConnectionState("error");
-      }
-    };
-
-    // Handle signaling state changes
-    pc.onsignalingstatechange = () => {
-      console.log("Signaling state:", pc.signalingState);
-      if (pc.signalingState === "closed") {
-        setConnectionState("disconnected");
-      }
-    };
-  };
-
-  /**
    * Handles incoming SDP offer from the remote peer.
    */
   const handleOffer = async (offer) => {
-    // console.log("handleOffer: Received offer", offer);
+    console.log("handleOffer: Received offer", offer);
     try {
       const pc = peerConnectionRef.current;
       if (!pc) {
@@ -85,20 +45,31 @@ const useVideoChat = (room) => {
         return;
       }
 
-      // Ensure the signaling state is stable before setting the remote description
-      if (pc.signalingState !== "stable") {
-        console.error(
-          "handleOffer: Cannot set remote description in signaling state:",
-          pc.signalingState
-        );
-        return;
-      }
-
+      console.log(
+        "handleOffer: Current signaling state before setRemoteDescription:",
+        pc.signalingState
+      );
       await pc.setRemoteDescription(new RTCSessionDescription(offer));
+      console.log(
+        "handleOffer: Signaling state after setRemoteDescription:",
+        pc.signalingState
+      );
+
       const answer = await pc.createAnswer();
+      console.log("handleOffer: Created answer", answer);
+
+      console.log(
+        "handleOffer: Current signaling state before setLocalDescription:",
+        pc.signalingState
+      );
       await pc.setLocalDescription(answer);
+      console.log(
+        "handleOffer: Signaling state after setLocalDescription:",
+        pc.signalingState
+      );
 
       socket.emit("answer", { answer, room });
+      console.log("handleOffer: Emitted answer to server");
     } catch (error) {
       console.error("handleOffer: Error handling offer:", error);
       setConnectionState("error");
@@ -109,20 +80,29 @@ const useVideoChat = (room) => {
    * Processes pending ICE candidates once the remote description is set.
    */
   const processPendingIceCandidates = async () => {
+    console.log("processPendingIceCandidates: Processing pending ICE candidates");
     const pc = peerConnectionRef.current;
+
     if (pc && pc.remoteDescription) {
+      console.log(
+        "processPendingIceCandidates: Remote description is set, processing candidates. Pending count:",
+        pendingIceCandidates.current.length
+      );
+
       while (pendingIceCandidates.current.length > 0) {
         const candidate = pendingIceCandidates.current.shift();
         try {
+          console.log("processPendingIceCandidates: Adding ICE candidate", candidate);
           await pc.addIceCandidate(new RTCIceCandidate(candidate));
+          console.log("processPendingIceCandidates: ICE candidate added successfully");
         } catch (error) {
-          console.error(
-            "processPendingIceCandidates: Error adding ICE candidate:",
-            error
-          );
+          console.error("processPendingIceCandidates: Error adding ICE candidate:", error);
           setConnectionState("error");
         }
       }
+      console.log("processPendingIceCandidates: Finished processing pending ICE candidates");
+    } else {
+      console.log("processPendingIceCandidates: Remote description not set, waiting...");
     }
   };
 
@@ -144,11 +124,20 @@ const useVideoChat = (room) => {
       if (localVideoRef.current) localVideoRef.current.srcObject = stream;
       localStreamRef.current = stream;
 
-      initializePeerConnection();
+      const pc = new RTCPeerConnection(iceServers);
+      peerConnectionRef.current = pc;
 
-      stream
-        .getTracks()
-        .forEach((track) => peerConnectionRef.current.addTrack(track, stream));
+      stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+
+      pc.ontrack = (event) => {
+        if (remoteVideoRef.current) remoteVideoRef.current.srcObject = event.streams[0];
+      };
+
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          socket.emit("ice-candidate", { candidate: event.candidate, room });
+        }
+      };
 
       if (room) {
         socket.emit("join-room", { room });
@@ -157,20 +146,24 @@ const useVideoChat = (room) => {
         socket.on("offer", handleOffer);
 
         socket.on("answer", async (answer) => {
+          console.log("answer: Received answer", answer);
           try {
             const pc = peerConnectionRef.current;
-            if (!pc) return;
-
-            // Ensure the signaling state is have-remote-offer before setting the remote description
-            if (pc.signalingState !== "have-remote-offer") {
-              console.error(
-                "answer: Cannot set remote description in signaling state:",
-                pc.signalingState
-              );
+            if (!pc) {
+              console.warn("answer: PeerConnection is null, exiting");
               return;
             }
 
+            console.log(
+              "answer: Current signaling state before setRemoteDescription:",
+              pc.signalingState
+            );
             await pc.setRemoteDescription(new RTCSessionDescription(answer));
+            console.log(
+              "answer: Signaling state after setRemoteDescription:",
+              pc.signalingState
+            );
+
             await processPendingIceCandidates();
           } catch (error) {
             console.error("answer: Error handling answer:", error);
@@ -182,8 +175,10 @@ const useVideoChat = (room) => {
           try {
             const pc = peerConnectionRef.current;
             if (pc.remoteDescription) {
+              console.log("ice-candidate: Adding candidate immediately", candidate);
               await pc.addIceCandidate(new RTCIceCandidate(candidate));
             } else {
+              console.log("ice-candidate: Pushing candidate to pending", candidate);
               pendingIceCandidates.current.push(candidate);
             }
           } catch (error) {
@@ -193,13 +188,31 @@ const useVideoChat = (room) => {
         });
 
         socket.on("ready", async () => {
+          console.log("ready: Received ready signal");
+          setConnectionState("connecting");
           try {
             const pc = peerConnectionRef.current;
-            if (!pc) return;
+            if (!pc) {
+              console.warn("ready: PeerConnection is null, exiting");
+              return;
+            }
 
+            console.log("ready: Creating offer...");
             const offer = await pc.createOffer();
+            console.log("ready: Created offer", offer);
+
+            console.log(
+              "ready: Current signaling state before setLocalDescription:",
+              pc.signalingState
+            );
             await pc.setLocalDescription(offer);
+            console.log(
+              "ready: Signaling state after setLocalDescription:",
+              pc.signalingState
+            );
+
             socket.emit("offer", { offer, room });
+            console.log("ready: Emitted offer to server");
           } catch (error) {
             console.error("ready: Error creating offer:", error);
             setConnectionState("error");
@@ -207,6 +220,7 @@ const useVideoChat = (room) => {
         });
 
         socket.on("leave-room", () => {
+          console.log("leave-room: Received leave-room signal");
           cleanupResources();
         });
       }
