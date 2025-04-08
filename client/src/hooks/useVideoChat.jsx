@@ -159,6 +159,7 @@ const useVideoChat = (room) => {
             await processPendingIceCandidates();
           } catch (error) {
             console.error("answer: Error handling answer:", error);
+            endCall()
             setConnectionState("error");
           }
         });
