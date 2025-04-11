@@ -47,7 +47,7 @@ const RandomVideoChat = () => {
         <VideoChat room={roomId} />
       </div>
       <div className="rounded-lg shadow-lg hidden md:block">
-        <GameSection room={roomId}/>
+      //  <GameSection room={roomId}/>
       </div>
     </div>
   );
